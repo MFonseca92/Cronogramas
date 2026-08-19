@@ -1,0 +1,133 @@
+/* =======================================================================
+   Atualiza o ÍNDICE do Cronogramas_v2.html
+   =======================================================================
+
+   O arquivo é um HTML único sem build, então o índice do topo é escrito à
+   mão — e envelhece a cada bloco que muda de lugar. Já esteve 1.200 linhas
+   defasado, apontando `KEYS` na linha 1061 quando ela estava na 2326. Um
+   índice errado é pior que nenhum: manda a pessoa pro lugar errado com ar
+   de certeza.
+
+   Este script acha cada seção pelo código (não pelo número) e reescreve a
+   lista com as linhas atuais.
+
+   Rodar:  node atualizar-indice.js           (grava)
+           node atualizar-indice.js --check   (só confere; sai 1 se defasou)
+
+   Ao ADICIONAR uma seção nova ao arquivo, acrescente uma linha em `SECOES`
+   aqui embaixo: rótulo, âncora (o trecho de código que começa a seção) e o
+   recuo. O resto sai sozinho.
+   ======================================================================= */
+const fs = require("fs");
+const path = require("path");
+
+const HTML = path.join(__dirname, "Cronogramas_v2.html");
+const CHECK = process.argv.includes("--check");
+
+/* [recuo, rótulo, âncora]. Âncora `null` = linha de título, sem número. */
+const SECOES = [
+  [1, "Tokens (tema claro/escuro, CSS da splash/login)", /^const T = \{/],
+  [1, "Helpers (funções puras: disponibilidade, tempos, custo, protocolo)", null],
+  [2, "dayWindow / withinAvailability (horário por dia da semana)", /^function dayWindow\(/],
+  [2, "activityTimes / blockedWindow (preparo, desmontagem, folga)", /^function activityTimes\(/],
+  [2, "timepointWindow / protocolDeviation (protocolo D0+offset)", /^function timepointWindow\(/],
+  [2, "bookingCost / cancellationOutcome / capacidade de sala", /^function bookingCost\(/],
+  [1, "Seed data (dados de exemplo — inclui cenários de cada estado)", /^const ACTIVITY_NAMES = /],
+  [2, "seedStudiesBundle (estudos, visitas, reservas, treino, h.extra)", /^function seedStudiesBundle\(/],
+  [1, "Small UI atoms (Chip, Btn, SearchPick, ResourceCard...)", /^function Chip\(/],
+  [1, "Main App", null],
+  [2, "KEYS (nomes das coleções — viram tabelas no banco)", /^const KEYS = \{/],
+  [2, "Capacidades / níveis de usuário (CAPABILITIES, USER_LEVELS)", /^const CAPABILITIES = \[/],
+  [2, "EntryGate (tela de login: usuário + PIN)", /^function EntryGate\(/],
+  [2, "App (estado, carregar/salvar, canI, roteamento das telas)", /^function App\(\)/],
+  [1, "Dashboard / Painel (indicadores rápidos + alertas)", /^function Dashboard\(/],
+  [1, "Motor de sugestão", null],
+  [2, "suggestCombo (escolhe sala/equipe/equipamento pra um horário)", /^function suggestCombo\(/],
+  [2, "planSameDay / planSpread (encadeiam as atividades do plano)", /^function planSameDay\(/],
+  [1, "Assistente de planejamento", null],
+  [2, "PlanItemRow / PlanCard (linha e card do plano sugerido)", /^function PlanItemRow\(/],
+  [2, "TimepointPlanner (planejar uma visita)", /^function TimepointPlanner\(/],
+  [2, 'BookingWizard (tela "Planejar estudo")', /^function BookingWizard\(/],
+  [1, "Cronograma", null],
+  [2, "AgendaView (grade do dia, com faixa fora do horário)", /^function AgendaView\(/],
+  [2, "FloorPlanView (planta baixa)", /^function FloorPlanView\(/],
+  [2, "BookingRow (linha de reserva, iniciar/finalizar)", /^function BookingRow\(/],
+  [2, "EncaixeForm (reserva avulsa / pedido de hora extra)", /^function EncaixeForm\(/],
+  [2, "Schedule (container: filtros + visão escolhida)", /^function Schedule\(/],
+  [1, "Configurações", null],
+  [2, "Registry (Cadastro)", /^function Registry\(/],
+  [2, "CostsEditor (Custos)", /^function CostsEditor\(/],
+  [2, "CalibrationPanel (Calibração)", /^function CalibrationPanel\(/],
+  [2, "StockPanel (Estoque)", /^function StockPanel\(/],
+  [2, "UserForm / UsersPanel (contas de login)", /^function UserForm\(/],
+  [2, "PermissionsPanel (matriz de capacidades por nível)", /^function PermissionsPanel\(/],
+  [2, "ActivityTimesPanel (tempos e intervalos por atividade)", /^function ActivityTimesPanel\(/],
+  [2, "ScheduleHoursPanel (horário por dia da semana)", /^function ScheduleHoursPanel\(/],
+  [2, "ConfigArea (junta os painéis acima em sub-abas)", /^function ConfigArea\(/],
+  [1, "EstimatesView (Estimativas — orçamento, pré-reserva, conversão)", /^function EstimatesView\(/],
+  [1, "CalendarView (Calendário — férias, folgas, feriados, manutenção)", /^function CalendarView\(/],
+  [1, "Estudos", null],
+  [2, "StudyForm (cadastro do protocolo: D0 + visitas por offset)", /^function StudyForm\(/],
+  [2, "StudiesView (lista, situação, desvio de protocolo)", /^function StudiesView\(/],
+  [1, "HistoryView (Histórico / auditoria)", /^function HistoryView\(/],
+  [1, "MeuDiaView (Meu dia — visão dia e semana)", /^function MeuDiaView\(/],
+  [1, "TrainingBoard (Treinamentos)", /^function TrainingBoard\(/],
+  [1, "OvertimeBoard (Horas Extras — fluxo de 2 passos)", /^function OvertimeBoard\(/],
+  [1, "IndicatorsView (Indicadores — só gestão)", /^function IndicatorsView\(/],
+  [1, "ItemForm (formulário genérico de todas as categorias do Cadastro)", /^function ItemForm\(/],
+  [1, "Bootstrap (ReactDOM.createRoot)", /^const root = ReactDOM\.createRoot/],
+];
+
+const CABECALHO = ` * ATENÇÃO: arquivo único sem build, então estes números envelhecem a cada
+ * edição — este índice já esteve 1.200 linhas defasado, apontando KEYS na
+ * l. 1061 quando ela estava na 2326, e um índice errado é pior que nenhum,
+ * porque manda a pessoa pro lugar errado com ar de certeza. Se o número não
+ * bater, o TÍTULO ainda bate: procure pelo nome. E, ao mover um bloco de
+ * lugar, \`node atualizar-indice.js\` reescreve esta lista sozinho.
+ *
+ *   (Persistência: fica ANTES daqui, no primeiro <script> — é o único ponto
+ *    a trocar pra ir pra banco/servidor. Vale ler antes de mexer no resto.)
+ *`;
+
+const src = fs.readFileSync(HTML, "utf8");
+const linhas = src.split("\n");
+
+const faltando = [];
+const corpo = SECOES.map(([nivel, rotulo, ancora]) => {
+  const recuo = nivel === 1 ? "   " : "     ";
+  if (!ancora) return ` *${recuo}${rotulo}`;
+  const i = linhas.findIndex((l) => ancora.test(l));
+  if (i < 0) { faltando.push(rotulo); return ` *${recuo}${rotulo} ... (não encontrado)`; }
+  const texto = `${recuo}${rotulo} `;
+  const marca = ` l. ${i + 1}`;
+  // Pontilhado até a coluna 72, como no índice original; rótulo longo só
+  // ganha um espaço, sem quebrar a linha.
+  const pontos = Math.max(1, 72 - texto.length - marca.length);
+  return ` *${texto}${".".repeat(pontos)}${marca}`;
+}).join("\n");
+
+const novo = `/* ========================================================================
+ * ÍNDICE — seções principais deste arquivo, em ordem, com a linha de cada
+ * uma. Busque pelo título abaixo (Ctrl+F) pra pular direto pro bloco; cada
+ * um tem seu próprio comentário-cabeçalho no código.
+ *
+${CABECALHO}
+${corpo}
+ * ======================================================================== */`;
+
+const inicio = src.indexOf("/* ========================================================================\n * ÍNDICE");
+if (inicio < 0) { console.error("não achei o bloco do ÍNDICE no HTML"); process.exit(1); }
+const fim = src.indexOf("======================================================================== */", inicio);
+const antigo = src.slice(inicio, fim + "======================================================================== */".length);
+
+if (faltando.length) {
+  console.error(`Seções que não foram encontradas no arquivo (âncora mudou?):\n  · ${faltando.join("\n  · ")}`);
+  process.exit(1);
+}
+if (antigo === novo) { console.log("O índice já está em dia."); process.exit(0); }
+if (CHECK) {
+  console.error("O índice está DEFASADO. Rode: node atualizar-indice.js");
+  process.exit(1);
+}
+fs.writeFileSync(HTML, src.replace(antigo, novo));
+console.log(`Índice atualizado — ${SECOES.filter((s) => s[2]).length} seções.`);

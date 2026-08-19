@@ -1,101 +1,16 @@
 // Testes do motor de agendamento.
 //
 // O app é um HTML único com JSX transpilado no navegador, então não dá pra
-// importar nada. Este harness extrai do arquivo as funções puras do motor (as
-// que não tocam em React) pelo nome, avalia num sandbox e roda asserções em
-// cima. Rodar com:  node Cronogramas/engine.test.js
+// importar nada. O extrator que recorta as funções puras do arquivo e as
+// avalia num sandbox mora em `engine-harness.js` — é o mesmo usado pelo
+// gerador de dados de demonstração, pra não existirem duas cópias da regra.
+// Rodar com:  node Cronogramas/engine.test.js
 const fs = require("fs");
 const path = require("path");
-const vm = require("vm");
 const assert = require("assert");
+const { loadEngine } = require("./engine-harness");
 
-const SRC = fs.readFileSync(path.join(__dirname, "Cronogramas_v2.html"), "utf8");
-
-// Nomes exportados pro sandbox. Ordem não importa: são declarações de função
-// (hoisted) e constantes de topo, avaliadas todas juntas.
-const FN_NAMES = [
-  "dayWindow", "withinAvailability", "activityTimes", "blockedWindow", "bookingMatchesResource",
-  "fieldFree", "loadOf", "equipAccessoryOptions", "equipCombinationFree", "participantLimit",
-  "unionDayWindow", "rowResourcePool", "dayBoundsForRow", "findSlotOnDay", "validateBooking",
-  "baseTypeName", "typeCandidates", "nextCalibrationDate", "calibrationStatus", "bookingCost",
-  "suggestCombo", "scorePlan", "planItemFrom", "tentativeBooking", "rowCriteria",
-  "planSameDay", "planSpread", "diagnoseRows", "timepointWindow", "protocolDeviation",
-  "normalizeProtocol", "makeRow", "makeTimepointDraft", "draftWindow",
-  "groupRows", "groupWindow", "suggestGroup", "dayBoundsForGroup", "findGroupSlotOnDay",
-  "mergeIntervals", "roomBookedMinutesOnDate", "roomAvailableMinutesOnDate", "dailyCapacityPct", "bookingsCost",
-  "bookingStatusFor", "trainingBookingFrom", "trainingsNeededFor",
-  "holdExpired", "bookingOccupies", "bookingTypeOf", "estimateEffectiveStatus",
-  "absenceOn", "absenceLabel", "easterSunday", "nationalHolidays",
-  "studyWindow", "studyFit", "protocolEnd", "protocolSpan",
-  "normalizeRoleCapabilities",
-  "estimateAsStudyShape", "estimateConversionBlockers", "bookingFromEstimateBooking", "timepointsFromEstimate",
-  "supplyOutlook", "capacityReuse", "conversionStats",
-  "seedStudiesBundle", "seedLocations", "seedActivities", "seedEquipment",
-  "seedCollaborators", "seedDoctors", "seedSupplies", "seedSponsors", "seedNiches",
-];
-const CONST_NAMES = [
-  "genId", "toMin", "overlaps", "fmtDate", "addDays", "weekdayKey", "weekdayLabel", "todayStr",
-  "DEFAULT_AVAIL", "WEEKDAYS", "bookingBlock", "addMinutes", "SLOT_STEP_MIN", "minToHHMM",
-  "PLAN_WEIGHTS", "STUDY_STATUS", "isStudyOpen",
-  "TRAINING_STATUS_META", "TRAINING_DEFAULT_MIN", "isTrainingBooking", "pickList",
-  "BOOKING_TYPE_META", "isEstimateBooking", "nowStamp", "nowHHMM",
-  "ESTIMATE_STATUS_META", "ESTIMATE_OPEN", "ESTIMATE_CLOSED", "isEstimateOpen", "estimateHoldsNow",
-  "ABSENCE_KINDS", "ABSENCE_KIND_META", "daysBetween",
-  "ACTIVITY_NAMES", "LOCATION_NAMES", "SPONSOR_NAMES", "CUSTOM_NICHE_SPONSORS",
-  // Ordem importa: o harness emite os `const` na sequência desta lista, e
-  // DEFAULT_ROLE_SCREENS usa TELAS_DO_DIA_A_DIA.
-  "SCREENS", "screenCap", "SCREEN_CAPS", "TELAS_DO_DIA_A_DIA", "DEFAULT_ROLE_SCREENS",
-  "CAPABILITIES", "CAP_GROUPS", "DEFAULT_ROLE_CAPABILITIES", "EDITABLE_ROLES",
-];
-
-// Anda pelo texto contando (){}[] fora de string/comentário e devolve a
-// declaração inteira — funciona tanto pra `function f(){...}` quanto pra
-// `const X = {...}` de várias linhas ou de uma linha só com comentário no fim.
-function grab(name, isConst) {
-  const head = isConst ? `\nconst ${name} = ` : `\nfunction ${name}(`;
-  const at = SRC.indexOf(head);
-  if (at < 0) throw new Error(`não achei ${name} no arquivo`);
-  let i = at + 1, depth = 0, started = false;
-  let str = null, inLine = false, inBlock = false;
-  for (; i < SRC.length; i++) {
-    const c = SRC[i], n = SRC[i + 1];
-    if (inLine) { if (c === "\n") inLine = false; continue; }
-    if (inBlock) { if (c === "*" && n === "/") { inBlock = false; i++; } continue; }
-    if (str) {
-      if (c === "\\") { i++; continue; }
-      if (c === str) str = null;
-      continue;
-    }
-    if (c === "/" && n === "/") { inLine = true; i++; continue; }
-    if (c === "/" && n === "*") { inBlock = true; i++; continue; }
-    if (c === '"' || c === "'" || c === "`") { str = c; continue; }
-    if ("({[".includes(c)) { depth++; started = true; continue; }
-    if (")}]".includes(c)) {
-      depth--;
-      // Função termina no `}` do corpo. O `)` da lista de parâmetros também
-      // zera a profundidade, mas não é o fim da declaração.
-      if (!isConst && started && depth === 0 && c === "}") return SRC.slice(at + 1, i + 1);
-      continue;
-    }
-    // Const termina no `;` ou na quebra de linha em profundidade zero — assim
-    // tanto `const X = 15; // nota` quanto um objeto de várias linhas funcionam.
-    if (isConst && depth === 0 && (c === ";" || c === "\n")) return SRC.slice(at + 1, i + 1);
-  }
-  throw new Error(`não consegui delimitar ${name}`);
-}
-
-const ALL = [...CONST_NAMES, ...FN_NAMES];
-// `const`/`function` num vm.Script ficam no escopo do script, não viram
-// propriedade do sandbox — daí a linha final que exporta tudo explicitamente.
-const code = [
-  ...CONST_NAMES.map((n) => grab(n, true)),
-  ...FN_NAMES.map((n) => grab(n, false)),
-  `globalThis.__E = { ${ALL.join(", ")} };`,
-].join("\n");
-const sandbox = { console };
-vm.createContext(sandbox);
-vm.runInContext(code, sandbox);
-const E = sandbox.__E;
+const E = loadEngine({ htmlPath: path.join(__dirname, "Cronogramas_v2.html") });
 
 /* ---------------------------------------------------------------------- */
 /* Cenário base                                                            */

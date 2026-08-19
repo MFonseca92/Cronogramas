@@ -1,0 +1,21 @@
+{
+  "name": "central-de-recursos",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Central de Recursos — agendamento de salas, equipe e equipamentos para estudos clínicos. HTML único + servidor de referência em Node puro, sem dependências.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node engine.test.js && node server.test.js && node adapter.test.js",
+    "test:engine": "node engine.test.js",
+    "test:server": "node server.test.js",
+    "test:adapter": "node adapter.test.js",
+    "demo": "node demo-seed.js --force && node demo-check.js",
+    "demo:check": "node demo-check.js",
+    "backup": "node server.js --backup",
+    "indice": "node atualizar-indice.js",
+    "indice:check": "node atualizar-indice.js --check"
+  }
+}
