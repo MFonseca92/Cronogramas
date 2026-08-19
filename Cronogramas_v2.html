@@ -423,7 +423,7 @@ import {
   ClipboardList, Star, Lock, Unlock, ShieldCheck, Search, GraduationCap,
   Info, CalendarRange, Layers, ThumbsDown, Sun, Moon, Boxes, History, Wallet,
   CalendarCheck, Settings, Timer, UserCog, LogOut, TrendingUp, Zap,
-  CalendarDays, Umbrella, PartyPopper, Wrench
+  CalendarDays, Umbrella, PartyPopper, Wrench, Bell, BellOff
 } from "https://esm.sh/lucide-react@0.383.0?deps=react@18.3.1";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
@@ -445,56 +445,59 @@ import ReactDOM from "https://esm.sh/react-dom@18.3.1/client";
  *   (Persistência: fica ANTES daqui, no primeiro <script> — é o único ponto
  *    a trocar pra ir pra banco/servidor. Vale ler antes de mexer no resto.)
  *
- *   Tokens (tema claro/escuro, CSS da splash/login) .............. l. 507
+ *   Tokens (tema claro/escuro, CSS da splash/login) .............. l. 510
  *   Helpers (funções puras: disponibilidade, tempos, custo, protocolo)
- *     dayWindow / withinAvailability (horário por dia da semana) . l. 629
- *     activityTimes / blockedWindow (preparo, desmontagem, folga) . l. 698
- *     timepointWindow / protocolDeviation (protocolo D0+offset) . l. 1451
- *     bookingCost / cancellationOutcome / capacidade de sala .... l. 1568
- *   Seed data (dados de exemplo — inclui cenários de cada estado) . l. 1694
- *     seedStudiesBundle (estudos, visitas, reservas, treino, h.extra) . l. 1934
- *   Small UI atoms (Chip, Btn, SearchPick, ResourceCard...) ..... l. 2225
+ *     dayWindow / withinAvailability (horário por dia da semana) . l. 632
+ *     activityTimes / blockedWindow (preparo, desmontagem, folga) . l. 701
+ *     timepointWindow / protocolDeviation (protocolo D0+offset) . l. 1454
+ *     bookingCost / cancellationOutcome / capacidade de sala .... l. 1571
+ *   Seed data (dados de exemplo — inclui cenários de cada estado) . l. 1697
+ *     seedStudiesBundle (estudos, visitas, reservas, treino, h.extra) . l. 1937
+ *   Avisos
+ *     pendingActionsFor (quem é avisado do quê — regra pura, testada) . l. 2262
+ *     useAvisos (contagem no menu, título da aba, balão do Windows) . l. 2451
+ *   Small UI atoms (Chip, Btn, SearchPick, ResourceCard...) ..... l. 2506
  *   Main App
- *     KEYS (nomes das coleções — viram tabelas no banco) ........ l. 2334
- *     Capacidades / níveis de usuário (CAPABILITIES, USER_LEVELS) . l. 2361
- *     EntryGate (tela de login: usuário + PIN) .................. l. 2491
- *     App (estado, carregar/salvar, canI, roteamento das telas) . l. 2537
- *   Dashboard / Painel (indicadores rápidos + alertas) .......... l. 3705
+ *     KEYS (nomes das coleções — viram tabelas no banco) ........ l. 2615
+ *     Capacidades / níveis de usuário (CAPABILITIES, USER_LEVELS) . l. 2642
+ *     EntryGate (tela de login: usuário + PIN) .................. l. 2772
+ *     App (estado, carregar/salvar, canI, roteamento das telas) . l. 2818
+ *   Dashboard / Painel (indicadores rápidos + alertas) .......... l. 4060
  *   Motor de sugestão
- *     suggestCombo (escolhe sala/equipe/equipamento pra um horário) . l. 3958
- *     planSameDay / planSpread (encadeiam as atividades do plano) . l. 4430
+ *     suggestCombo (escolhe sala/equipe/equipamento pra um horário) . l. 4313
+ *     planSameDay / planSpread (encadeiam as atividades do plano) . l. 4785
  *   Assistente de planejamento
- *     PlanItemRow / PlanCard (linha e card do plano sugerido) ... l. 4622
- *     TimepointPlanner (planejar uma visita) .................... l. 4840
- *     BookingWizard (tela "Planejar estudo") .................... l. 5249
+ *     PlanItemRow / PlanCard (linha e card do plano sugerido) ... l. 4977
+ *     TimepointPlanner (planejar uma visita) .................... l. 5195
+ *     BookingWizard (tela "Planejar estudo") .................... l. 5604
  *   Cronograma
- *     AgendaView (grade do dia, com faixa fora do horário) ...... l. 5711
- *     FloorPlanView (planta baixa) .............................. l. 5842
- *     BookingRow (linha de reserva, iniciar/finalizar) .......... l. 5906
- *     EncaixeForm (reserva avulsa / pedido de hora extra) ....... l. 5978
- *     Schedule (container: filtros + visão escolhida) ........... l. 6236
+ *     AgendaView (grade do dia, com faixa fora do horário) ...... l. 6066
+ *     FloorPlanView (planta baixa) .............................. l. 6197
+ *     BookingRow (linha de reserva, iniciar/finalizar) .......... l. 6261
+ *     EncaixeForm (reserva avulsa / pedido de hora extra) ....... l. 6333
+ *     Schedule (container: filtros + visão escolhida) ........... l. 6591
  *   Configurações
- *     Registry (Cadastro) ....................................... l. 6513
- *     CostsEditor (Custos) ...................................... l. 6746
- *     CalibrationPanel (Calibração) ............................. l. 6802
- *     StockPanel (Estoque) ...................................... l. 6863
- *     UserForm / UsersPanel (contas de login) ................... l. 6962
- *     PermissionsPanel (matriz de capacidades por nível) ........ l. 7069
- *     ActivityTimesPanel (tempos e intervalos por atividade) .... l. 7203
- *     ScheduleHoursPanel (horário por dia da semana) ............ l. 7295
- *     ConfigArea (junta os painéis acima em sub-abas) ........... l. 7935
- *   EstimatesView (Estimativas — orçamento, pré-reserva, conversão) . l. 7459
- *   CalendarView (Calendário — férias, folgas, feriados, manutenção) . l. 7697
+ *     Registry (Cadastro) ....................................... l. 6868
+ *     CostsEditor (Custos) ...................................... l. 7101
+ *     CalibrationPanel (Calibração) ............................. l. 7157
+ *     StockPanel (Estoque) ...................................... l. 7218
+ *     UserForm / UsersPanel (contas de login) ................... l. 7317
+ *     PermissionsPanel (matriz de capacidades por nível) ........ l. 7424
+ *     ActivityTimesPanel (tempos e intervalos por atividade) .... l. 7558
+ *     ScheduleHoursPanel (horário por dia da semana) ............ l. 7650
+ *     ConfigArea (junta os painéis acima em sub-abas) ........... l. 8290
+ *   EstimatesView (Estimativas — orçamento, pré-reserva, conversão) . l. 7814
+ *   CalendarView (Calendário — férias, folgas, feriados, manutenção) . l. 8052
  *   Estudos
- *     StudyForm (cadastro do protocolo: D0 + visitas por offset) . l. 7992
- *     StudiesView (lista, situação, desvio de protocolo) ........ l. 8176
- *   HistoryView (Histórico / auditoria) ......................... l. 8697
- *   MeuDiaView (Meu dia — visão dia e semana) ................... l. 8767
- *   TrainingBoard (Treinamentos) ................................ l. 9066
- *   OvertimeBoard (Horas Extras — fluxo de 2 passos) ............ l. 9207
- *   IndicatorsView (Indicadores — só gestão) .................... l. 9290
- *   ItemForm (formulário genérico de todas as categorias do Cadastro) . l. 9605
- *   Bootstrap (ReactDOM.createRoot) ............................. l. 9824
+ *     StudyForm (cadastro do protocolo: D0 + visitas por offset) . l. 8347
+ *     StudiesView (lista, situação, desvio de protocolo) ........ l. 8531
+ *   HistoryView (Histórico / auditoria) ......................... l. 9052
+ *   MeuDiaView (Meu dia — visão dia e semana) ................... l. 9122
+ *   TrainingBoard (Treinamentos) ................................ l. 9421
+ *   OvertimeBoard (Horas Extras — fluxo de 2 passos) ............ l. 9562
+ *   IndicatorsView (Indicadores — só gestão) .................... l. 9645
+ *   ItemForm (formulário genérico de todas as categorias do Cadastro) . l. 9960
+ *   Bootstrap (ReactDOM.createRoot) ............................ l. 10179
  * ======================================================================== */
 
 /* ---------------------------------------------------------------------- */
@@ -2220,6 +2223,284 @@ function seedStudiesBundle(data) {
 }
 
 /* ---------------------------------------------------------------------- */
+/* AVISOS — o que está esperando ESTA pessoa                                */
+/*                                                                          */
+/* Função PURA de propósito: recebe os dados e quem está logado, devolve a   */
+/* lista do que diz respeito a essa pessoa. Fica fora do React porque é a    */
+/* única parte disso que tem regra de verdade — QUEM recebe O QUÊ —, e       */
+/* regra sem teste é regra que ninguém confere. A parte de React em cima     */
+/* disso só conta e mostra.                                                  */
+/*                                                                          */
+/* O destinatário NÃO é configurado aqui: sai da mesma capacidade que já     */
+/* governa quem enxerga o botão. Quem pode aprovar prazo é quem é avisado    */
+/* do prazo. Assim a matriz de permissões que o Admin já edita passa a       */
+/* controlar as notificações também, sem uma segunda tela pra manter — e     */
+/* tirar a capacidade de alguém tira o aviso junto, sem ninguém lembrar.     */
+/*                                                                          */
+/* O `id` carrega o ESTADO, não só o registro. Uma hora extra que vai de     */
+/* "pendente" para "aprovada" gera um id novo, então o aviso do resultado    */
+/* chega mesmo que o pedido já tenha sido avisado antes. É por isso que      */
+/* dá pra guardar só uma lista de ids já notificados, sem histórico.         */
+/*                                                                          */
+/* `acao` separa duas coisas que parecem a mesma e não são:                 */
+/*                                                                          */
+/*   acao: true   alguém está TRAVADO esperando você. Sai da lista sozinho  */
+/*                quando você resolve. É isto que vira número no menu.      */
+/*   acao: false  recado: "sua hora extra foi aprovada", "marcaram uma      */
+/*                reserva pra você". Merece o balão na hora, mas NUNCA o    */
+/*                número — porque não some quando você lê. Contar isso      */
+/*                deixaria um "28" permanente no menu, e um contador que    */
+/*                nunca zera é um contador que ninguém mais olha.           */
+/* ---------------------------------------------------------------------- */
+const AVISO_JANELA_VISITA_DIAS = 10; // visita vencendo sem ninguém ter marcado
+const AVISO_JANELA_HOLD_DIAS = 3;    // pré-reserva prestes a expirar
+// Avisos do mesmo grupo viram UM balão só ("3 novas reservas na sua agenda").
+// Reserva nova é o evento mais frequente do sistema: sem agrupar, um dia de
+// planejamento vira vinte notificações e a pessoa desliga tudo pra sempre.
+const AVISO_GRUPO_AGENDA = "agenda";
+
+function pendingActionsFor(ctx = {}) {
+  const {
+    hoje = todayStr(), actorName = "", myPersonId = null, myPersonRole = null,
+    isAdmin = false, isGestor = false, can = () => false,
+    overtimeRequests = [], trainingRequests = [], deadlineRequests = [],
+    bookings = [], studies = [], timepoints = [], estimates = [],
+  } = ctx;
+
+  const out = [];
+  const add = (id, kind, tab, title, body, opts = {}) => out.push({
+    id, kind, tab, title, body,
+    acao: opts.acao !== false, group: opts.group || null,
+  });
+  const gestao = isAdmin || isGestor;
+  // `requestedBy` guarda o NOME de quem pediu, não o id — é assim que o
+  // registro já nasce hoje. Comparar por nome basta para avisar a pessoa do
+  // resultado; o pior caso é dois homônimos receberem o aviso um do outro,
+  // que é bem menos grave do que ninguém receber.
+  const euPedi = (nome) => !!actorName && nome === actorName;
+
+  /* --- 1. Hora extra pedida PRA MIM: preciso dizer se topo ------------- */
+  if (myPersonId && can("hora_extra_responder")) {
+    overtimeRequests.filter((r) => r.status === "pendente" && r.personId === myPersonId).forEach((r) => {
+      add(`ovt-responder:${r.id}`, "hora_extra", "overtime",
+        "Hora extra esperando sua resposta",
+        `${r.activityName || "Atividade"} · ${r.date} ${r.start}–${r.end}${r.reason ? ` — ${r.reason}` : ""}`);
+    });
+  }
+
+  /* --- 2. A pessoa topou; falta a gestão aprovar ----------------------- */
+  if (gestao) {
+    overtimeRequests.filter((r) => r.status === "disponivel").forEach((r) => {
+      add(`ovt-aprovar:${r.id}`, "hora_extra", "overtime",
+        "Hora extra aguardando sua aprovação",
+        `${r.personName || "Colaborador"} aceitou — ${r.date} ${r.start}–${r.end}`);
+    });
+  }
+
+  /* --- 3. Resultado da hora extra volta para quem pediu ---------------- */
+  overtimeRequests.filter((r) => euPedi(r.requestedBy)
+    && ["confirmado", "recusado", "dispensado"].includes(r.status)).forEach((r) => {
+    const veredito = r.status === "confirmado" ? "aprovada" : r.status === "recusado" ? "recusada" : "dispensada";
+    add(`ovt-resultado:${r.id}:${r.status}`, "hora_extra", "overtime",
+      `Hora extra ${veredito}`,
+      `${r.personName || "Colaborador"} · ${r.date} ${r.start}–${r.end}`, { acao: false });
+  });
+
+  /* --- 4. Treinamento pedido, esperando a equipe marcar ---------------- */
+  if (can("treinamento_confirmar")) {
+    trainingRequests.filter((r) => r.status === "pendente").forEach((r) => {
+      const atrasado = r.deadlineDate && r.deadlineDate < hoje;
+      add(`trn-agendar:${r.id}${atrasado ? ":atrasado" : ""}`, "treinamento", "training",
+        atrasado ? "Treinamento com prazo VENCIDO" : "Treinamento esperando agendamento",
+        `${r.collaboratorName || "Colaborador"} · ${r.activityName || "atividade"}${r.deadlineDate ? ` · prazo ${r.deadlineDate}` : ""}`);
+    });
+  }
+
+  /* --- 5. Meu treinamento foi marcado ---------------------------------- */
+  if (myPersonId) {
+    trainingRequests.filter((r) => r.status === "agendado" && r.collaboratorId === myPersonId && r.scheduledDate)
+      .forEach((r) => {
+        // A data entra no id: remarcar a aula avisa de novo, que é o certo.
+        add(`trn-marcado:${r.id}:${r.scheduledDate}:${r.scheduledStart || ""}`, "treinamento", "training",
+          "Seu treinamento foi agendado",
+          `${r.activityName || "Atividade"} · ${r.scheduledDate}${r.scheduledStart ? ` às ${r.scheduledStart}` : ""}`, { acao: false });
+      });
+  }
+
+  /* --- 6. Pedido de novo prazo esperando o gestor ---------------------- */
+  if (can("aprovar_prazo")) {
+    deadlineRequests.filter((r) => r.status === "pendente").forEach((r) => {
+      add(`prz-aprovar:${r.id}`, "prazo", "studies",
+        "Pedido de novo prazo aguardando aprovação",
+        `${r.studyName || "Estudo"} · ${r.timepointLabel || "visita"} — até ${r.requestedDateMax}${r.reason ? ` (${r.reason})` : ""}`);
+    });
+  }
+
+  /* --- 7. Resultado do prazo volta para quem pediu --------------------- */
+  deadlineRequests.filter((r) => euPedi(r.requestedBy) && ["aprovado", "recusado"].includes(r.status))
+    .forEach((r) => {
+      add(`prz-resultado:${r.id}:${r.status}`, "prazo", "studies",
+        `Pedido de prazo ${r.status === "aprovado" ? "aprovado" : "recusado"}`,
+        `${r.studyName || "Estudo"} · ${r.timepointLabel || "visita"}`, { acao: false });
+    });
+
+  /* --- 8. Visita do protocolo vencendo e ninguém marcou ---------------- */
+  /* Este é o único que fala de algo que NÃO aconteceu — e é justamente o
+   * mais caro: visita fora da janela do protocolo é desvio, e desvio em
+   * estudo clínico custa mais que qualquer hora extra. Hoje só aparece para
+   * quem abre o Painel. */
+  if (gestao || can("planejar_estudo")) {
+    const limite = addDays(hoje, AVISO_JANELA_VISITA_DIAS);
+    const abertos = new Set(studies.filter((s) => s.status === "ativo").map((s) => s.id));
+    timepoints.filter((tp) => abertos.has(tp.studyId) && tp.dateMax >= hoje && tp.dateMax <= limite
+      && !bookings.some((b) => b.timepointId === tp.id)).forEach((tp) => {
+      const study = studies.find((s) => s.id === tp.studyId);
+      add(`tp-sem-agenda:${tp.id}`, "visita", "studies",
+        "Visita do protocolo sem agendamento",
+        `${study?.name || "Estudo"} · ${tp.label} — prazo ${tp.dateMax}`);
+    });
+  }
+
+  /* --- 9. Pré-reserva prestes a expirar -------------------------------- */
+  /* Quando o prazo vence, o horário volta a ficar livre sozinho e ninguém
+   * fica sabendo — o recurso deixa de estar segurado sem nenhuma decisão. */
+  if (can("estimativa_segurar")) {
+    const limite = addDays(hoje, AVISO_JANELA_HOLD_DIAS);
+    estimates.filter((e) => estimateEffectiveStatus(e) === "pre_reserva"
+      && e.holdUntil && e.holdUntil <= limite).forEach((e) => {
+      add(`est-expira:${e.id}:${e.holdUntil}`, "estimativa", "estimates",
+        "Pré-reserva prestes a expirar",
+        `${e.name} — recursos segurados até ${e.holdUntil}`);
+    });
+  }
+
+  /* --- 10. Reserva nova na minha agenda -------------------------------- */
+  /* Agrupado: o balão vira "3 novas reservas na sua agenda". Ver
+   * AVISO_GRUPO_AGENDA. Só o que ainda vai acontecer — avisar de reserva de
+   * ontem não serve pra nada. */
+  if (myPersonId) {
+    bookings.filter((b) => b.date >= hoje && b.bookingType !== "estimate"
+      && (myPersonRole === "doctor" ? b.doctorId === myPersonId : (b.collaboratorIds || []).includes(myPersonId)))
+      .forEach((b) => {
+        add(`agenda:${b.id}:${b.date}:${b.start}`, "agenda", "myday",
+          "Nova reserva na sua agenda",
+          `${b.studyName || "Reserva"} · ${b.date} ${b.start}–${b.end}`,
+          { acao: false, group: AVISO_GRUPO_AGENDA });
+      });
+  }
+
+  return out;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Avisos — a parte que fala com o navegador                                */
+/*                                                                          */
+/* A REGRA de quem recebe o quê está em `pendingActionsFor`, acima, e é      */
+/* testada. Aqui em baixo só tem encanamento: guardar o que já foi avisado,  */
+/* agrupar e pedir o balão pro sistema operacional.                          */
+/*                                                                          */
+/* HTTPS: a notificação do navegador só existe em CONTEXTO SEGURO — `https`  */
+/* ou `http://localhost`. Servindo em `http://192.168.x.x`, que é como a     */
+/* equipe acessa, o navegador nem oferece a permissão. Por isso a contagem   */
+/* no menu e o título da aba funcionam SEMPRE, e o balão é um extra que se   */
+/* liga sozinho no dia em que houver certificado. Nada aqui quebra sem ele;  */
+/* o botão do sino simplesmente explica por que não dá.                      */
+/* ---------------------------------------------------------------------- */
+const AVISO_NOTIFICADOS_KEY = "crb2-avisos-notificados";
+// Acima disso vira um balão só. Ninguém lê seis balões empilhados, e o
+// Windows os empilha de qualquer forma.
+const AVISO_MAX_BALOES = 3;
+
+const notificacaoDisponivel = () => typeof window !== "undefined"
+  && "Notification" in window && window.isSecureContext;
+
+function dispararBaloes(novos, aoClicar) {
+  // Agrupa o que tem grupo (reserva nova é o caso): um dia de planejamento
+  // gera vinte reservas pra mesma pessoa, e vinte balões seguidos fazem
+  // qualquer um desligar a notificação e nunca mais ligar.
+  const grupos = new Map();
+  const soltos = [];
+  novos.forEach((a) => {
+    if (!a.group) { soltos.push(a); return; }
+    grupos.set(a.group, [...(grupos.get(a.group) || []), a]);
+  });
+  const baloes = [
+    ...soltos.map((a) => ({ title: a.title, body: a.body, tab: a.tab })),
+    ...[...grupos.values()].map((g) => (g.length === 1
+      ? { title: g[0].title, body: g[0].body, tab: g[0].tab }
+      : { title: `${g.length} novas reservas na sua agenda`, body: g.slice(0, 3).map((x) => x.body).join("\n"), tab: g[0].tab })),
+  ];
+  const mostrar = baloes.length > AVISO_MAX_BALOES
+    ? [{ title: `${baloes.length} avisos novos`, body: "Abra a Central de Recursos para ver.", tab: "dashboard" }]
+    : baloes;
+
+  mostrar.forEach((b) => {
+    try {
+      // `tag` faz o sistema SUBSTITUIR um balão de mesmo título em vez de
+      // empilhar — importante com o poll de 5s, que pode reavisar.
+      const n = new Notification(b.title, { body: b.body, tag: b.title, lang: "pt-BR" });
+      n.onclick = () => { try { window.focus(); } catch { /* sem foco, tudo bem */ } aoClicar?.(b.tab); n.close(); };
+    } catch { /* navegador recusou; a contagem no menu continua valendo */ }
+  });
+}
+
+/* Recebe a lista de avisos já calculada e cuida do resto.
+ *   `escopo`  quem está logado. Trocar de usuário zera o controle: o que é
+ *             novidade pra um não é pro outro, e os dois usam o mesmo
+ *             navegador em computador compartilhado. */
+function useAvisos(itens, escopo, aoClicar) {
+  const [permissao, setPermissao] = useState(() => (notificacaoDisponivel() ? Notification.permission : "indisponivel"));
+  const notificadosRef = React.useRef(null);
+  const escopoRef = React.useRef(null);
+
+  const pedirPermissao = useCallback(async () => {
+    if (!notificacaoDisponivel()) return;
+    try { setPermissao(await Notification.requestPermission()); } catch { /* a pessoa fechou o diálogo */ }
+  }, []);
+
+  useEffect(() => {
+    if (!escopo) { notificadosRef.current = null; escopoRef.current = null; return; }
+    const chave = `${AVISO_NOTIFICADOS_KEY}:${escopo}`;
+    const idsAgora = itens.map((a) => a.id);
+
+    /* Primeira carga deste usuário neste navegador: o que JÁ EXISTE não é
+     * novidade. Sem isto, entrar num sistema com doze pendências dispara doze
+     * balões de uma vez — e a primeira impressão do recurso vira "isso me
+     * enche o saco", que é de onde ninguém volta. */
+    if (escopoRef.current !== chave) {
+      escopoRef.current = chave;
+      let guardados = null;
+      try { guardados = JSON.parse(localStorage.getItem(chave) || "null"); } catch { guardados = null; }
+      const primeiraVez = !Array.isArray(guardados);
+      notificadosRef.current = new Set(primeiraVez ? idsAgora : guardados);
+      if (primeiraVez) {
+        try { localStorage.setItem(chave, JSON.stringify(idsAgora)); } catch { /* modo anônimo */ }
+        return;
+      }
+    }
+
+    const jaAvisados = notificadosRef.current;
+    const novos = itens.filter((a) => !jaAvisados.has(a.id));
+    if (!novos.length) return;
+
+    /* Guarda só o que ainda está pendente. A lista some junto com o aviso —
+     * senão ela cresce pra sempre no navegador de quem usa isso todo dia. E o
+     * efeito colateral é o certo: se a mesma pendência voltar, avisa de novo. */
+    const manter = idsAgora.filter((id) => jaAvisados.has(id) || novos.some((n) => n.id === id));
+    notificadosRef.current = new Set(manter);
+    try { localStorage.setItem(chave, JSON.stringify(manter)); } catch { /* modo anônimo */ }
+
+    // Quem está com a tela na frente já vê o número no menu. Balão é pra quem
+    // está em outra aba, em outra janela ou com o navegador minimizado.
+    const olhando = !document.hidden && document.hasFocus();
+    if (olhando || permissao !== "granted" || !notificacaoDisponivel()) return;
+    dispararBaloes(novos, aoClicar);
+  }, [itens, escopo, permissao, aoClicar]);
+
+  return { permissao, pedirPermissao, disponivel: notificacaoDisponivel() };
+}
+
+/* ---------------------------------------------------------------------- */
 /* Small UI atoms                                                          */
 /* ---------------------------------------------------------------------- */
 function Chip({ children, tone = "neutral" }) {
@@ -2695,6 +2976,45 @@ function App() {
     if (myPersonRole === "doctor" && roleCapabilities?.medico?.includes(cap)) return true;
     return false;
   };
+
+  /* AVISOS. Roda de carona no mesmo estado que a consulta de 5 segundos já
+   * atualiza — não há polling novo nem chamada nova ao servidor. A regra de
+   * quem recebe o quê está em `pendingActionsFor`, fora do React e coberta
+   * por teste; aqui só se junta o que ela precisa saber.
+   *
+   * Fica ANTES do retorno da tela de carregamento de propósito: hook não
+   * pode ficar depois de um `return` condicional. */
+  const avisos = useMemo(() => (loading || !currentUserId ? [] : pendingActionsFor({
+    hoje: todayStr(), actorName, myPersonId, myPersonRole, isAdmin, isGestor, can: canI,
+    overtimeRequests: overtimeRequests || [], trainingRequests: trainingRequests || [],
+    deadlineRequests: deadlineRequests || [], bookings: bookings || [],
+    studies: studies || [], timepoints: timepoints || [], estimates: estimates || [],
+  })), [loading, currentUserId, actorName, myPersonId, myPersonRole, isAdmin, isGestor,
+    isTrainer, isScheduler, roleCapabilities, overtimeRequests, trainingRequests,
+    deadlineRequests, bookings, studies, timepoints, estimates]);
+
+  /* O número no menu e no título conta só o que EXIGE AÇÃO — ver `acao` em
+   * pendingActionsFor. Recado ("marcaram uma reserva pra você") merece o
+   * balão na hora, mas não vira número: não some quando a pessoa lê, e um
+   * contador que nunca zera deixa de ser lido em uma semana. */
+  const avisosDeAcao = useMemo(() => avisos.filter((a) => a.acao), [avisos]);
+  const avisosPorTab = useMemo(() => {
+    const porTela = {};
+    avisosDeAcao.forEach((a) => { porTela[a.tab] = (porTela[a.tab] || 0) + 1; });
+    return porTela;
+  }, [avisosDeAcao]);
+
+  const irParaAviso = useCallback((destino) => { if (destino) setTab(destino); }, []);
+  const notificacoes = useAvisos(avisos, currentUserId, irParaAviso);
+
+  /* Título da aba. É o aviso que funciona em qualquer situação: sem HTTPS,
+   * sem permissão, com a janela minimizada — a pessoa vê "(3)" na barra de
+   * tarefas do mesmo jeito. */
+  useEffect(() => {
+    document.title = avisosDeAcao.length
+      ? `(${avisosDeAcao.length}) Central de Recursos`
+      : "Central de Recursos";
+  }, [avisosDeAcao.length]);
 
   // Trava contra duas cargas ao mesmo tempo. Com localStorage a leitura resolvia
   // na hora e isso nunca aparecia; contra um servidor, cada `get` é uma ida à
@@ -3601,14 +3921,25 @@ function App() {
             <button key={n.id} onClick={() => setTab(n.id)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors"
               style={{ background: tab === n.id ? T.accent : "transparent", color: tab === n.id ? "#fff" : "#B9CBCA" }}>
               <n.icon size={15} className="shrink-0" /><span className="flex-1 text-left truncate">{n.label}</span>
-              {n.id === "training" && pendingTrainingCount > 0 && (
-                <span className="text-[10px] rounded-full px-1.5 leading-4 shrink-0" style={{ background: T.warn, color: "#fff" }}>{pendingTrainingCount}</span>
-              )}
-              {n.id === "overtime" && pendingOvertimeCount > 0 && (
-                <span className="text-[10px] rounded-full px-1.5 leading-4 shrink-0" style={{ background: T.warn, color: "#fff" }}>{pendingOvertimeCount}</span>
-              )}
-              {n.id === "dashboard" && alerts.length > 0 && (
-                <span className="text-[10px] rounded-full px-1.5 leading-4 shrink-0" style={{ background: T.danger, color: "#fff" }}>{alerts.length}</span>
+              {/* Um número por item, nunca dois. Quando existe algo esperando
+                  ESTA pessoa, é esse o número que aparece (em verde) — ele é
+                  mais específico que os contadores gerais, que mostram o
+                  trabalho do setor inteiro. Sem aviso pessoal, valem os
+                  contadores de sempre. */}
+              {avisosPorTab[n.id] > 0 ? (
+                <span title="esperando você" className="text-[10px] rounded-full px-1.5 leading-4 shrink-0 font-semibold" style={{ background: T.accent, color: "#fff" }}>{avisosPorTab[n.id]}</span>
+              ) : (
+                <>
+                  {n.id === "training" && pendingTrainingCount > 0 && (
+                    <span className="text-[10px] rounded-full px-1.5 leading-4 shrink-0" style={{ background: T.warn, color: "#fff" }}>{pendingTrainingCount}</span>
+                  )}
+                  {n.id === "overtime" && pendingOvertimeCount > 0 && (
+                    <span className="text-[10px] rounded-full px-1.5 leading-4 shrink-0" style={{ background: T.warn, color: "#fff" }}>{pendingOvertimeCount}</span>
+                  )}
+                  {n.id === "dashboard" && alerts.length > 0 && (
+                    <span className="text-[10px] rounded-full px-1.5 leading-4 shrink-0" style={{ background: T.danger, color: "#fff" }}>{alerts.length}</span>
+                  )}
+                </>
               )}
             </button>
           ))}
@@ -3619,6 +3950,30 @@ function App() {
             <button onClick={toggleTheme} title={theme === "dark" ? "Mudar para tema claro" : "Mudar para tema escuro"}
               className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0" style={{ background: "transparent", color: "#B9CBCA", border: `1px solid ${T.chromeLine}` }}>
               {theme === "dark" ? <Sun size={13} /> : <Moon size={13} />}
+            </button>
+            {/* Sino: liga a notificação do Windows. Aparece SEMPRE, inclusive
+                quando não dá — porque "por que não recebo notificação?" é a
+                pergunta que a pessoa faria de qualquer jeito, e é melhor a
+                resposta estar aqui do que virar um chamado. */}
+            <button
+              onClick={notificacoes.permissao === "default" ? notificacoes.pedirPermissao : undefined}
+              disabled={notificacoes.permissao !== "default"}
+              title={
+                !notificacoes.disponivel
+                  ? "Notificação do Windows exige HTTPS — pela rede interna em http:// o navegador não permite. A contagem no menu e no título da aba continuam funcionando."
+                  : notificacoes.permissao === "granted" ? "Notificações do Windows ativadas"
+                  : notificacoes.permissao === "denied" ? "Notificações bloqueadas para este site — libere no cadeado da barra de endereço"
+                  : "Ativar notificações do Windows"
+              }
+              className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
+              style={{
+                background: "transparent",
+                color: notificacoes.permissao === "granted" ? T.accent : "#B9CBCA",
+                opacity: notificacoes.permissao === "default" ? 1 : 0.55,
+                cursor: notificacoes.permissao === "default" ? "pointer" : "default",
+                border: `1px solid ${T.chromeLine}`,
+              }}>
+              {notificacoes.permissao === "granted" ? <Bell size={13} /> : <BellOff size={13} />}
             </button>
             <div className="min-w-0 flex-1 px-2.5 py-1.5 rounded-lg" style={{ border: `1px solid ${T.chromeLine}` }}>
               <div className="text-xs font-medium truncate" style={{ color: "#fff" }}>{actorName}</div>

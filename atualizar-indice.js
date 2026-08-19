@@ -34,6 +34,9 @@ const SECOES = [
   [2, "bookingCost / cancellationOutcome / capacidade de sala", /^function bookingCost\(/],
   [1, "Seed data (dados de exemplo — inclui cenários de cada estado)", /^const ACTIVITY_NAMES = /],
   [2, "seedStudiesBundle (estudos, visitas, reservas, treino, h.extra)", /^function seedStudiesBundle\(/],
+  [1, "Avisos", null],
+  [2, "pendingActionsFor (quem é avisado do quê — regra pura, testada)", /^function pendingActionsFor\(/],
+  [2, "useAvisos (contagem no menu, título da aba, balão do Windows)", /^function useAvisos\(/],
   [1, "Small UI atoms (Chip, Btn, SearchPick, ResourceCard...)", /^function Chip\(/],
   [1, "Main App", null],
   [2, "KEYS (nomes das coleções — viram tabelas no banco)", /^const KEYS = \{/],
@@ -89,45 +92,64 @@ const CABECALHO = ` * ATENÇÃO: arquivo único sem build, então estes números
  *    a trocar pra ir pra banco/servidor. Vale ler antes de mexer no resto.)
  *`;
 
-const src = fs.readFileSync(HTML, "utf8");
-const linhas = src.split("\n");
+/* Reescrever o índice MUDA os números que ele acabou de calcular: o bloco
+ * cresce ou encolhe e empurra todo o arquivo abaixo dele. Por isso isto roda
+ * até estabilizar, em vez de uma vez só — senão toda alteração exigiria rodar
+ * o comando duas vezes, e a segunda é justamente a que todo mundo esquece.
+ * Converge em duas passadas na prática; o limite existe só pra não girar pra
+ * sempre se alguma âncora nova entrar em conflito. */
+const MARCA = "======================================================================== */";
 
-const faltando = [];
-const corpo = SECOES.map(([nivel, rotulo, ancora]) => {
-  const recuo = nivel === 1 ? "   " : "     ";
-  if (!ancora) return ` *${recuo}${rotulo}`;
-  const i = linhas.findIndex((l) => ancora.test(l));
-  if (i < 0) { faltando.push(rotulo); return ` *${recuo}${rotulo} ... (não encontrado)`; }
-  const texto = `${recuo}${rotulo} `;
-  const marca = ` l. ${i + 1}`;
-  // Pontilhado até a coluna 72, como no índice original; rótulo longo só
-  // ganha um espaço, sem quebrar a linha.
-  const pontos = Math.max(1, 72 - texto.length - marca.length);
-  return ` *${texto}${".".repeat(pontos)}${marca}`;
-}).join("\n");
+function montar(src) {
+  const linhas = src.split("\n");
+  const faltando = [];
+  const corpo = SECOES.map(([nivel, rotulo, ancora]) => {
+    const recuo = nivel === 1 ? "   " : "     ";
+    if (!ancora) return ` *${recuo}${rotulo}`;
+    const i = linhas.findIndex((l) => ancora.test(l));
+    if (i < 0) { faltando.push(rotulo); return ` *${recuo}${rotulo} ... (não encontrado)`; }
+    const texto = `${recuo}${rotulo} `;
+    const marca = ` l. ${i + 1}`;
+    // Pontilhado até a coluna 72, como no índice original; rótulo longo só
+    // ganha um espaço, sem quebrar a linha.
+    const pontos = Math.max(1, 72 - texto.length - marca.length);
+    return ` *${texto}${".".repeat(pontos)}${marca}`;
+  }).join("\n");
 
-const novo = `/* ========================================================================
+  const novo = `/* ========================================================================
  * ÍNDICE — seções principais deste arquivo, em ordem, com a linha de cada
  * uma. Busque pelo título abaixo (Ctrl+F) pra pular direto pro bloco; cada
  * um tem seu próprio comentário-cabeçalho no código.
  *
 ${CABECALHO}
 ${corpo}
- * ======================================================================== */`;
+ * ${MARCA}`;
 
-const inicio = src.indexOf("/* ========================================================================\n * ÍNDICE");
-if (inicio < 0) { console.error("não achei o bloco do ÍNDICE no HTML"); process.exit(1); }
-const fim = src.indexOf("======================================================================== */", inicio);
-const antigo = src.slice(inicio, fim + "======================================================================== */".length);
+  const inicio = src.indexOf("/* ========================================================================\n * ÍNDICE");
+  if (inicio < 0) throw new Error("não achei o bloco do ÍNDICE no HTML");
+  const fim = src.indexOf(MARCA, inicio);
+  return { antigo: src.slice(inicio, fim + MARCA.length), novo, faltando };
+}
 
-if (faltando.length) {
-  console.error(`Seções que não foram encontradas no arquivo (âncora mudou?):\n  · ${faltando.join("\n  · ")}`);
-  process.exit(1);
+let src = fs.readFileSync(HTML, "utf8");
+let passadas = 0;
+let mudou = false;
+for (let i = 0; i < 6; i++) {
+  const r = montar(src);
+  if (r.faltando.length) {
+    console.error(`Seções que não foram encontradas no arquivo (âncora mudou?):\n  · ${r.faltando.join("\n  · ")}`);
+    process.exit(1);
+  }
+  if (r.antigo === r.novo) break;
+  if (CHECK) {
+    console.error("O índice está DEFASADO. Rode: node atualizar-indice.js");
+    process.exit(1);
+  }
+  src = src.replace(r.antigo, r.novo);
+  mudou = true;
+  passadas++;
 }
-if (antigo === novo) { console.log("O índice já está em dia."); process.exit(0); }
-if (CHECK) {
-  console.error("O índice está DEFASADO. Rode: node atualizar-indice.js");
-  process.exit(1);
-}
-fs.writeFileSync(HTML, src.replace(antigo, novo));
-console.log(`Índice atualizado — ${SECOES.filter((s) => s[2]).length} seções.`);
+
+if (!mudou) { console.log("O índice já está em dia."); process.exit(0); }
+fs.writeFileSync(HTML, src);
+console.log(`Índice atualizado — ${SECOES.filter((s) => s[2]).length} seções, ${passadas} passada(s).`);

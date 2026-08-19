@@ -10,7 +10,11 @@ const path = require("path");
 const assert = require("assert");
 const { loadEngine } = require("./engine-harness");
 
-const E = loadEngine({ htmlPath: path.join(__dirname, "Cronogramas_v2.html") });
+const E = loadEngine({
+  htmlPath: path.join(__dirname, "Cronogramas_v2.html"),
+  fns: ["pendingActionsFor"],
+  consts: ["AVISO_JANELA_VISITA_DIAS", "AVISO_JANELA_HOLD_DIAS", "AVISO_GRUPO_AGENDA"],
+});
 
 /* ---------------------------------------------------------------------- */
 /* Cenário base                                                            */
@@ -1896,6 +1900,275 @@ test("toda reserva de exemplo aponta pra cadastro que existe", () => {
     });
     bundle.timepoints.forEach((tp) => assert.ok(sts.has(tp.studyId), `visita apontando pra estudo inexistente`));
   }
+});
+
+/* ---------------------------------------------------------------------- */
+/* Avisos — quem recebe o quê                                              */
+/*                                                                          */
+/* A regra que importa aqui não é "o aviso aparece", é "o aviso aparece PRA */
+/* QUEM DEVE". Aviso que vaza pro time errado é vazamento de informação num */
+/* sistema onde nem tudo é de todo mundo; aviso que não chega é pior que    */
+/* aviso nenhum, porque as pessoas param de olhar a tela confiando nele.    */
+/* Por isso cada caso testa os dois lados: quem recebe e quem NÃO recebe.   */
+console.log("\nAvisos — quem recebe o quê");
+
+const DIA_AVISOS = "2026-08-19";
+// `can` de mentira: recebe a lista de capacidades e responde como o canI real.
+const comCaps = (...caps) => (cap) => caps.includes(cap);
+const avisos = (over = {}) => E.pendingActionsFor({ hoje: DIA_AVISOS, ...over });
+const kinds = (lista) => lista.map((a) => a.kind).sort();
+const ids = (lista) => lista.map((a) => a.id);
+
+const OVT = (over = {}) => ({
+  id: "o1", status: "pendente", personId: "col1", personName: "Ana",
+  activityName: "Lavagem", date: "2026-08-25", start: "18:00", end: "19:30",
+  requestedBy: "Gestor", reason: "voluntária só vem à noite", ...over,
+});
+const TRN = (over = {}) => ({
+  id: "t1", status: "pendente", collaboratorId: "col1", collaboratorName: "Ana",
+  activityName: "Corneometria", deadlineDate: "2026-09-10", ...over,
+});
+const PRZ = (over = {}) => ({
+  id: "d1", status: "pendente", studyName: "Protocolo X", timepointLabel: "T1 (D14±2)",
+  requestedBy: "Agendador", currentDateMax: "2026-08-30", requestedDateMax: "2026-09-05", ...over,
+});
+
+test("hora extra pendente avisa a PESSOA, não a gestão", () => {
+  const base = { overtimeRequests: [OVT()] };
+  const dela = avisos({ ...base, myPersonId: "col1", can: comCaps("hora_extra_responder") });
+  assert.deepEqual(kinds(dela), ["hora_extra"]);
+  assert.ok(dela[0].title.includes("sua resposta"));
+  // O gestor não é quem responde: pra ele esse pedido ainda não existe.
+  assert.equal(avisos({ ...base, isGestor: true }).length, 0);
+});
+
+test("sem a capacidade de responder, a pessoa não é avisada", () => {
+  const r = avisos({ overtimeRequests: [OVT()], myPersonId: "col1", can: comCaps() });
+  assert.equal(r.length, 0);
+});
+
+test("outro colaborador não vê a hora extra que é de alguém", () => {
+  const r = avisos({ overtimeRequests: [OVT()], myPersonId: "col9", can: comCaps("hora_extra_responder") });
+  assert.equal(r.length, 0);
+});
+
+test("depois que a pessoa aceita, quem é avisado é a gestão", () => {
+  const base = { overtimeRequests: [OVT({ status: "disponivel" })] };
+  const gestor = avisos({ ...base, isGestor: true });
+  assert.equal(gestor.length, 1);
+  assert.ok(gestor[0].title.includes("aprovação"));
+  // E a pessoa não recebe de novo: ela já respondeu, a bola não é mais dela.
+  assert.equal(avisos({ ...base, myPersonId: "col1", can: comCaps("hora_extra_responder") }).length, 0);
+});
+
+test("o resultado da hora extra volta pra quem PEDIU, pelo nome", () => {
+  const base = { overtimeRequests: [OVT({ status: "confirmado" })] };
+  const quemPediu = avisos({ ...base, actorName: "Gestor" });
+  assert.equal(quemPediu.length, 1);
+  assert.ok(quemPediu[0].title.includes("aprovada"));
+  assert.equal(avisos({ ...base, actorName: "Outra Pessoa" }).length, 0);
+});
+
+test("recusa e dispensa também voltam pra quem pediu", () => {
+  ["recusado", "dispensado"].forEach((st) => {
+    const r = avisos({ overtimeRequests: [OVT({ status: st })], actorName: "Gestor" });
+    assert.equal(r.length, 1, st);
+  });
+});
+
+test("sem nome de usuário, ninguém vira 'quem pediu'", () => {
+  // Senão todo mundo que entrasse sem se identificar receberia o resultado de
+  // qualquer pedido feito por "usuário sem identificação".
+  const r = avisos({ overtimeRequests: [OVT({ status: "confirmado", requestedBy: "" })], actorName: "" });
+  assert.equal(r.length, 0);
+});
+
+test("treinamento pendente avisa quem confirma treinamento", () => {
+  const base = { trainingRequests: [TRN()] };
+  const equipe = avisos({ ...base, can: comCaps("treinamento_confirmar") });
+  assert.deepEqual(kinds(equipe), ["treinamento"]);
+  assert.equal(avisos({ ...base, isGestor: true }).length, 0);
+});
+
+test("treinamento com prazo vencido é um aviso DIFERENTE do mesmo pedido", () => {
+  const vencido = avisos({ trainingRequests: [TRN({ deadlineDate: "2026-08-01" })], can: comCaps("treinamento_confirmar") });
+  assert.ok(vencido[0].title.includes("VENCIDO"));
+  // Id diferente do pedido normal: quem já foi avisado do pedido é avisado de
+  // novo quando ele estoura o prazo, que é quando volta a importar.
+  const noPrazo = avisos({ trainingRequests: [TRN()], can: comCaps("treinamento_confirmar") });
+  assert.notEqual(vencido[0].id, noPrazo[0].id);
+});
+
+test("treinamento agendado avisa QUEM VAI SER TREINADO", () => {
+  const req = TRN({ status: "agendado", scheduledDate: "2026-08-27", scheduledStart: "09:00" });
+  const dela = avisos({ trainingRequests: [req], myPersonId: "col1" });
+  assert.equal(dela.length, 1);
+  assert.ok(dela[0].body.includes("2026-08-27"));
+  assert.equal(avisos({ trainingRequests: [req], myPersonId: "col2" }).length, 0);
+});
+
+test("remarcar a aula avisa de novo", () => {
+  const antes = avisos({ trainingRequests: [TRN({ status: "agendado", scheduledDate: "2026-08-27", scheduledStart: "09:00" })], myPersonId: "col1" });
+  const depois = avisos({ trainingRequests: [TRN({ status: "agendado", scheduledDate: "2026-08-28", scheduledStart: "09:00" })], myPersonId: "col1" });
+  assert.notEqual(antes[0].id, depois[0].id);
+});
+
+test("pedido de prazo avisa quem aprova prazo", () => {
+  const base = { deadlineRequests: [PRZ()] };
+  assert.equal(avisos({ ...base, can: comCaps("aprovar_prazo") }).length, 1);
+  assert.equal(avisos({ ...base, myPersonId: "col1" }).length, 0);
+});
+
+test("o resultado do prazo volta pra quem pediu", () => {
+  const base = { deadlineRequests: [PRZ({ status: "aprovado" })] };
+  const r = avisos({ ...base, actorName: "Agendador" });
+  assert.equal(r.length, 1);
+  assert.ok(r[0].title.includes("aprovado"));
+  assert.equal(avisos({ ...base, actorName: "Gestor" }).length, 0);
+});
+
+test("prazo já decidido não fica pendurado pra quem aprova", () => {
+  const r = avisos({ deadlineRequests: [PRZ({ status: "aprovado" })], can: comCaps("aprovar_prazo") });
+  assert.equal(r.length, 0);
+});
+
+test("visita vencendo sem agendamento avisa quem planeja", () => {
+  const cenario = {
+    studies: [{ id: "s1", name: "Protocolo X", status: "ativo" }],
+    timepoints: [{ id: "tp1", studyId: "s1", label: "T1", dateMax: "2026-08-25" }],
+    bookings: [],
+  };
+  assert.equal(avisos({ ...cenario, can: comCaps("planejar_estudo") }).length, 1);
+  assert.equal(avisos({ ...cenario, isGestor: true }).length, 1);
+  assert.equal(avisos({ ...cenario, myPersonId: "col1" }).length, 0);
+});
+
+test("visita JÁ agendada não avisa", () => {
+  const r = avisos({
+    studies: [{ id: "s1", name: "Protocolo X", status: "ativo" }],
+    timepoints: [{ id: "tp1", studyId: "s1", label: "T1", dateMax: "2026-08-25" }],
+    bookings: [{ id: "b1", timepointId: "tp1", date: "2026-08-24", start: "09:00", end: "10:00" }],
+    can: comCaps("planejar_estudo"),
+  });
+  // Sobra zero: a visita saiu do aviso, e a reserva não é minha (sem myPersonId).
+  assert.equal(r.length, 0);
+});
+
+test("visita de estudo encerrado ou fora da janela não avisa", () => {
+  const tp = { id: "tp1", studyId: "s1", label: "T1", dateMax: "2026-08-25" };
+  const fechado = avisos({
+    studies: [{ id: "s1", name: "X", status: "concluido" }], timepoints: [tp], can: comCaps("planejar_estudo"),
+  });
+  assert.equal(fechado.length, 0, "estudo encerrado");
+  const longe = avisos({
+    studies: [{ id: "s1", name: "X", status: "ativo" }],
+    timepoints: [{ ...tp, dateMax: "2026-12-01" }], can: comCaps("planejar_estudo"),
+  });
+  assert.equal(longe.length, 0, "prazo ainda distante");
+  const passado = avisos({
+    studies: [{ id: "s1", name: "X", status: "ativo" }],
+    timepoints: [{ ...tp, dateMax: "2026-08-01" }], can: comCaps("planejar_estudo"),
+  });
+  assert.equal(passado.length, 0, "prazo já passou — é problema de outra tela");
+});
+
+test("pré-reserva perto de expirar avisa quem pode segurar recurso", () => {
+  const est = { id: "e1", name: "Oportunidade Y", status: "pre_reserva", holdUntil: "2026-08-21" };
+  assert.equal(avisos({ estimates: [est], can: comCaps("estimativa_segurar") }).length, 1);
+  assert.equal(avisos({ estimates: [est], isGestor: true }).length, 0);
+});
+
+test("pré-reserva com prazo folgado não avisa; prorrogar gera aviso novo depois", () => {
+  const longe = avisos({ estimates: [{ id: "e1", name: "Y", status: "pre_reserva", holdUntil: "2026-09-30" }], can: comCaps("estimativa_segurar") });
+  assert.equal(longe.length, 0);
+  const perto = avisos({ estimates: [{ id: "e1", name: "Y", status: "pre_reserva", holdUntil: "2026-08-20" }], can: comCaps("estimativa_segurar") });
+  const outroPrazo = avisos({ estimates: [{ id: "e1", name: "Y", status: "pre_reserva", holdUntil: "2026-08-21" }], can: comCaps("estimativa_segurar") });
+  assert.notEqual(perto[0].id, outroPrazo[0].id, "o prazo entra no id");
+});
+
+test("reserva nova na agenda avisa a pessoa, agrupada", () => {
+  const bookings = [
+    { id: "b1", studyName: "X", date: "2026-08-25", start: "09:00", end: "10:00", collaboratorIds: ["col1"] },
+    { id: "b2", studyName: "Y", date: "2026-08-26", start: "09:00", end: "10:00", collaboratorIds: ["col1"] },
+  ];
+  const r = avisos({ bookings, myPersonId: "col1", myPersonRole: "collaborator" });
+  assert.equal(r.length, 2);
+  // O grupo é o que faz virar UM balão só em vez de dois.
+  assert.ok(r.every((a) => a.group === E.AVISO_GRUPO_AGENDA));
+});
+
+test("médico é avisado pelo campo do médico, não pela lista de colaboradores", () => {
+  const b = { id: "b1", studyName: "X", date: "2026-08-25", start: "09:00", end: "10:00", doctorId: "doc1", collaboratorIds: ["col1"] };
+  assert.equal(avisos({ bookings: [b], myPersonId: "doc1", myPersonRole: "doctor" }).length, 1);
+  assert.equal(avisos({ bookings: [b], myPersonId: "col1", myPersonRole: "doctor" }).length, 0);
+});
+
+test("reserva que já passou não avisa, e previsão de estimativa também não", () => {
+  const mine = { collaboratorIds: ["col1"], studyName: "X", start: "09:00", end: "10:00" };
+  const passada = avisos({ bookings: [{ ...mine, id: "b1", date: "2026-08-10" }], myPersonId: "col1" });
+  assert.equal(passada.length, 0);
+  const previsao = avisos({ bookings: [{ ...mine, id: "b2", date: "2026-08-25", bookingType: "estimate" }], myPersonId: "col1" });
+  assert.equal(previsao.length, 0, "previsão não é compromisso — não se avisa ninguém");
+});
+
+test("os ids são únicos e estáveis entre duas chamadas iguais", () => {
+  const cenario = {
+    overtimeRequests: [OVT(), OVT({ id: "o2", status: "disponivel" })],
+    trainingRequests: [TRN()],
+    deadlineRequests: [PRZ()],
+    myPersonId: "col1", isGestor: true, actorName: "Gestor",
+    can: comCaps("hora_extra_responder", "treinamento_confirmar", "aprovar_prazo"),
+  };
+  const a = avisos(cenario), b = avisos(cenario);
+  assert.deepEqual(ids(a), ids(b), "mesma entrada, mesmos ids");
+  assert.equal(new Set(ids(a)).size, ids(a).length, "sem id repetido");
+  assert.ok(a.every((x) => x.id && x.kind && x.tab && x.title && x.body));
+});
+
+test("o Admin recebe o que a gestão recebe", () => {
+  const r = avisos({ overtimeRequests: [OVT({ status: "disponivel" })], isAdmin: true });
+  assert.equal(r.length, 1);
+});
+
+test("recado não conta como ação — senão o número no menu nunca zera", () => {
+  /* A distinção que sustenta o contador: "alguém está travado esperando
+   * você" sai da lista sozinho quando você resolve; "sua hora extra foi
+   * aprovada" fica na base pra sempre. Contar o segundo deixaria um número
+   * permanente no menu, e contador que não zera ninguém mais olha. */
+  const soRecados = avisos({
+    actorName: "Gestor", myPersonId: "col1", myPersonRole: "collaborator",
+    overtimeRequests: [OVT({ status: "confirmado" })],
+    deadlineRequests: [PRZ({ status: "aprovado", requestedBy: "Gestor" })],
+    trainingRequests: [TRN({ status: "agendado", scheduledDate: "2026-08-27" })],
+    bookings: [{ id: "b1", studyName: "X", date: "2026-08-25", start: "09:00", end: "10:00", collaboratorIds: ["col1"] }],
+  });
+  assert.ok(soRecados.length >= 4, "os recados existem");
+  assert.equal(soRecados.filter((a) => a.acao).length, 0, "nenhum deles conta no menu");
+});
+
+test("o que trava alguém conta como ação", () => {
+  const pendencias = avisos({
+    myPersonId: "col1", isGestor: true,
+    can: comCaps("hora_extra_responder", "treinamento_confirmar", "aprovar_prazo", "estimativa_segurar", "planejar_estudo"),
+    overtimeRequests: [OVT(), OVT({ id: "o2", status: "disponivel" })],
+    trainingRequests: [TRN()],
+    deadlineRequests: [PRZ()],
+    estimates: [{ id: "e1", name: "Y", status: "pre_reserva", holdUntil: "2026-08-20" }],
+    studies: [{ id: "s1", name: "X", status: "ativo" }],
+    timepoints: [{ id: "tp1", studyId: "s1", label: "T1", dateMax: "2026-08-25" }],
+  });
+  assert.equal(pendencias.length, 6);
+  assert.equal(pendencias.filter((a) => a.acao).length, 6, "todos exigem alguém fazer algo");
+});
+
+test("base inteira sem ninguém logado não gera aviso nenhum", () => {
+  // A tela de login não pode disparar notificação de nada.
+  const r = avisos({
+    overtimeRequests: [OVT(), OVT({ id: "o2", status: "disponivel" })],
+    trainingRequests: [TRN()], deadlineRequests: [PRZ()],
+    estimates: [{ id: "e1", name: "Y", status: "pre_reserva", holdUntil: "2026-08-20" }],
+  });
+  assert.equal(r.length, 0);
 });
 
 /* ---------------------------------------------------------------------- */
