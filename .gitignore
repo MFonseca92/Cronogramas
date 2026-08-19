@@ -1,3 +1,15 @@
-﻿data.db
+# O banco. Nunca versionado: é dado de produção, e em modo WAL são três
+# arquivos que só fazem sentido juntos.
+data.db
 data.db-wal
 data.db-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Backups gerados por `POST /api/backup` e por `node server.js --backup`.
+# Ficam fora da pasta servida estaticamente de propósito — versionar aqui
+# seria publicar a base inteira.
+backups/
+
+node_modules/
