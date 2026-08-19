@@ -58,6 +58,21 @@ const item = (rotulo, valor) => console.log(`  ${String(rotulo).padEnd(42, ".")}
 
 console.log(`\nConferência de ${path.basename(DB_PATH)} — hoje é ${T0}`);
 
+/* Base limpa (`demo-seed.js --vazio`): cadastro de pé, movimento zerado. Não
+ * há o que conferir, e as "telas vazias" aqui são o pedido, não o defeito —
+ * então isto sai cedo em vez de reprovar uma base que está exatamente como
+ * deveria. */
+if (!bookings.length && !studies.length && !estimates.length) {
+  console.log("\n\x1b[1mBase limpa — sem movimento\x1b[0m");
+  item("salas / métodos / equipamentos", `${data.locations.length} / ${data.activities.length} / ${data.equipment.length}`);
+  item("colaboradores / médicos", `${data.collaborators.length} / ${data.doctors.length}`);
+  item("contas de login", users.length);
+  item("patrocinadores / insumos / feriados", `${data.sponsors.length} / ${data.supplies.length} / ${data.calendar.length}`);
+  console.log("\n\x1b[32mCadastro de pé e movimento zerado, como pedido. Nada a conferir.\x1b[0m");
+  db.close();
+  process.exit(0);
+}
+
 /* --- Painel ----------------------------------------------------------- */
 linha("Painel");
 const hoje = bookings.filter((b) => b.date === T0);

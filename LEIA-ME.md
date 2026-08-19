@@ -51,13 +51,17 @@ Todas usam o PIN mostrado ao lado. Trocar de usuário no meio da apresentação
 é a forma mais rápida de mostrar as permissões por nível — cada um vê um menu
 diferente.
 
-| Usuário | PIN | O que enxerga |
-|---|---|---|
-| Administrador | 1234 | tudo, inclusive Usuários e Permissões |
-| Gestor | 4560 | Indicadores, Estimativas, Configurações, Cadastro |
-| Agendador | 7890 | Planejar estudo, Estimativas, Cronograma |
-| Equipe de Treinamento | 1112 | Treinamentos e o dia a dia |
-| *(qualquer colaborador ou médico pelo nome)* | 1234 | Meu dia + o dia a dia |
+**O PIN de todas as contas é `1234`.** Nos dados de teste é o mesmo para todo
+mundo, de propósito: quem apresenta troca de usuário várias vezes e não pode
+travar lembrando qual PIN é de quem.
+
+| Usuário | O que enxerga |
+|---|---|
+| Administrador | tudo, inclusive Usuários e Permissões |
+| Gestor | Indicadores, Estimativas, Configurações, Cadastro |
+| Agendador | Planejar estudo, Estimativas, Cronograma |
+| Equipe de Treinamento | Treinamentos e o dia a dia |
+| *(qualquer colaborador ou médico pelo nome)* | Meu dia + o dia a dia |
 
 ---
 
@@ -130,27 +134,50 @@ regras que o sistema cobra do usuário — nada aqui é inválido:
 | `demo-check.js` | Confere o que cada tela vai mostrar. |
 | `engine-harness.js` | Carrega o motor do HTML — usado pelos testes e pelo gerador. |
 | `atualizar-indice.js` | Reescreve o índice do topo do HTML com as linhas atuais. |
-| `*.test.js` | 272 testes: motor, servidor e o adaptador entre os dois. |
+| `*.test.js` | 299 testes: motor, servidor e o adaptador entre os dois. |
 | `data.db` | O banco. Não versione, não copie à mão (veja abaixo). |
 
 ### Comandos
 
 ```
-npm test              # roda os 272 testes
+npm test              # roda os 299 testes
 npm run demo          # regera os dados e confere
 npm start             # sobe o servidor
+npm run demo:limpo    # base limpa: cadastro de pé, movimento zerado
 npm run indice        # atualiza o índice do HTML
 ```
 
 Variações do gerador:
 
 ```
-node demo-seed.js --seed 7      # outra variação dos sorteios
-node demo-seed.js --db teste.db # grava em outro arquivo
+node demo-seed.js --vazio --force   # base LIMPA (veja abaixo)
+node demo-seed.js --seed 7          # outra variação dos sorteios
+node demo-seed.js --db teste.db     # grava em outro arquivo
 ```
 
 A mesma semente sempre produz a mesma demonstração — dá para ensaiar sabendo
 que a tela do ensaio é a tela do dia.
+
+### Base limpa, para testar criando tudo à mão
+
+```
+npm run demo:limpo
+```
+
+Deixa o **cadastro de pé** — 15 salas, 29 métodos, 26 equipamentos, 37
+patrocinadores, 5 insumos e os feriados do ano — e zera **todo o movimento**:
+nenhum estudo, reserva, estimativa, treinamento, hora extra ou histórico.
+
+A equipe encolhe para **4 colaboradores e 4 médicos**, todos habilitados em
+todos os métodos, para nada travar por falta de treinamento. São 12 contas ao
+todo: Administrador, Gestor, Equipe de Treinamento e Agendador, mais os 4
+colaboradores e os 4 médicos pelo nome. Todas com o PIN `1234`.
+
+É a base para testar o sistema de dentro: criar um estudo, montar o protocolo,
+deixar o assistente agendar, pedir hora extra, aprovar. Com 4 pessoas dá para
+conferir de cabeça cada escolha que o motor fez — com 22 não dá.
+
+Para voltar à base cheia, `npm run demo`.
 
 ---
 

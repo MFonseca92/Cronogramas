@@ -16,6 +16,7 @@
     "demo:check": "node demo-check.js",
     "backup": "node server.js --backup",
     "indice": "node atualizar-indice.js",
-    "indice:check": "node atualizar-indice.js --check"
+    "indice:check": "node atualizar-indice.js --check",
+    "demo:limpo": "node demo-seed.js --vazio --force && node demo-check.js"
   }
 }

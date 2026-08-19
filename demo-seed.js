@@ -11,6 +11,10 @@
      node demo-seed.js --force          (apaga o data.db e regera do zero)
      node demo-seed.js --db outro.db    (grava em outro arquivo)
      node demo-seed.js --seed 42        (outra variação dos sorteios)
+     node demo-seed.js --vazio --force  (base LIMPA: cadastro de pé, zero
+                                         movimento, 4 colaboradores e 4
+                                         médicos — pra testar criando tudo
+                                         à mão)
 
    ---------------------------------------------------------------------
    POR QUE ELE NÃO ESCREVE AS REGRAS DE NOVO
@@ -50,6 +54,13 @@ const flag = (name, fallback) => {
   return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : fallback;
 };
 const FORCE = argv.includes("--force");
+/* Base LIMPA: o cadastro fica de pé (salas, métodos, equipamentos, insumos,
+ * patrocinadores) e o movimento não existe — nenhum estudo, nenhuma reserva,
+ * nenhum histórico. É a base pra testar o sistema de dentro, criando as
+ * coisas à mão, em vez de olhar dados prontos. A equipe encolhe pra 4
+ * colaboradores e 4 médicos: com 22 pessoas fica difícil acompanhar quem o
+ * motor escolheu e por quê. */
+const VAZIO = argv.includes("--vazio") || argv.includes("--limpo");
 const DB_PATH = path.resolve(flag("--db", path.join(__dirname, "data.db")));
 const SEED = Number(flag("--seed", "20260819"));
 const QUIET = argv.includes("--quiet");
@@ -108,7 +119,23 @@ const EXTRA_COLLABORATORS = [
   "Jonas Rezende", "Karina Villaça", "Lucas Bittencourt", "Mariana Estevão",
 ];
 
-function buildCatalog() {
+/* Todo mundo com o MESMO PIN nos dados de teste.
+ *
+ * O pacote de exemplo do app dá um PIN diferente pra cada conta de serviço
+ * (Gestor 4560, Treinamento 1112, Agendador 7890). Numa demonstração isso só
+ * atrapalha: quem está apresentando troca de usuário seis vezes e trava
+ * lembrando qual é qual. Aqui é tudo 1234.
+ *
+ * Vale dizer o óbvio: isto é dado de teste. O PIN fica em texto puro e é
+ * conferido no navegador — em produção precisa virar hash conferido no
+ * servidor, junto com o login de verdade. Ver o cabeçalho do server.js. */
+const PIN_DEMO = "1234";
+function padronizarPins(users, collaborators, doctors) {
+  [...users, ...collaborators, ...doctors].forEach((x) => { if (x) x.pin = PIN_DEMO; });
+  return users;
+}
+
+function buildCatalog({ enxuto = false } = {}) {
   const niches = E.seedNiches();
   const sponsors = E.seedSponsors(niches);
   const supplies = E.seedSupplies();
@@ -144,12 +171,16 @@ function buildCatalog() {
   });
   doctors.forEach((doc, i) => { doc.hourlyCost = doc.hourlyCost ?? [110, 125, 140, 155][i % 4]; });
 
-  const collaborators = [
+  // Na base limpa o setor é pequeno de propósito: 4 pessoas e 4 médicos. Dá
+  // pra conferir cada escolha do motor de cabeça, que é o ponto de testar
+  // assim. Cheia, a demonstração precisa de gente pra agenda fechar.
+  const collaborators = enxuto ? base.slice(0, 4) : [
     ...base,
     ...EXTRA_COLLABORATORS.map((name) => ({
       id: id("col"), name, levels: {}, availability: { ...E.DEFAULT_AVAIL }, active: true, hourlyCost: null, pin: "1234",
     })),
   ];
+  if (enxuto) doctors.splice(4);
   collaborators.forEach((c, i) => { c.hourlyCost = c.hourlyCost ?? [24, 27, 30, 33, 36][i % 5]; });
 
   /* Qualificação. O pacote de exemplo dá 2-3 métodos por pessoa, o que basta
@@ -159,6 +190,17 @@ function buildCatalog() {
    * fica com uma especialidade (nível 5) e um resto de nível 3-4 — que é
    * como um setor de verdade se parece, e o que dá conteúdo à tela de
    * treinamento. */
+  /* Com 4 pessoas não dá pra garantir 5 aptas por método — e mais importante:
+   * numa base limpa, "sem ninguém treinado" seria a primeira parede que a
+   * pessoa encontraria, antes de conseguir testar qualquer coisa. Então todo
+   * mundo nasce habilitado em tudo. Pra exercitar a tela de Treinamentos,
+   * basta baixar o nível de alguém no Cadastro. */
+  if (enxuto) {
+    collaborators.forEach((c) => { activities.forEach((act) => { c.levels[act.id] = int(4, 5); }); });
+    const users = padronizarPins(E.seedUsers(collaborators, doctors), collaborators, doctors);
+    return { niches, sponsors, supplies, locations, activities, equipment, doctors, collaborators, users, calendar: E.seedCalendar(), carentes: [] };
+  }
+
   const MIN_APTOS = 5;
   activities.forEach((act) => {
     const min = act.minLevel || 3;
@@ -175,7 +217,7 @@ function buildCatalog() {
     shuffle(aptos).slice(2).forEach((c) => { c.levels[act.id] = 2; });
   });
 
-  const users = E.seedUsers(collaborators, doctors);
+  const users = padronizarPins(E.seedUsers(collaborators, doctors), collaborators, doctors);
   const calendar = E.seedCalendar();
 
   return { niches, sponsors, supplies, locations, activities, equipment, doctors, collaborators, users, calendar, carentes };
@@ -959,6 +1001,69 @@ function gravar(dbPath, colecoes) {
 /* ---------------------------------------------------------------------- */
 /* Execução                                                                 */
 /* ---------------------------------------------------------------------- */
+/* Base limpa: cadastro em pé, movimento zerado.
+ *
+ * As coleções de movimento são gravadas VAZIAS de propósito, e a sentinela
+ * `crb2-seed` entra junto. Sem ela, o app olharia uma base sem estudos e sem
+ * reservas, concluiria que nunca foi semeada, e criaria o pacote de exemplo
+ * inteiro por cima na primeira vez que alguém abrisse — o teste começaria
+ * com seis reservas que ninguém pediu. Coleção vazia com a sentinela é o que
+ * diz "está vazia porque alguém quis". */
+function gerarBaseLimpa() {
+  log(`Gerando base LIMPA — hoje é ${T0}.`);
+  const cat = buildCatalog({ enxuto: true });
+
+  gravar(DB_PATH, {
+    "crb2-seed": [{ id: "__base", at: new Date().toISOString() }],
+    // Cadastro — fica de pé
+    "crb2-niches": cat.niches,
+    "crb2-sponsors": cat.sponsors,
+    "crb2-locations": cat.locations,
+    "crb2-supplies": cat.supplies,
+    "crb2-activities": cat.activities,
+    "crb2-equipment": cat.equipment,
+    "crb2-doctors": cat.doctors,
+    "crb2-collaborators": cat.collaborators,
+    "crb2-users": cat.users,
+    "crb2-calendar": cat.calendar, // só os feriados nacionais
+    "crb2-role-capabilities": E.DEFAULT_ROLE_CAPABILITIES,
+    // Movimento — vazio
+    "crb2-studies": [],
+    "crb2-timepoints": [],
+    "crb2-bookings": [],
+    "crb2-estimates": [],
+    "crb2-training-requests": [],
+    "crb2-overtime-requests": [],
+    "crb2-deadline-requests": [],
+    "crb2-cancellations": [],
+    "crb2-stock-entries": [],
+    "crb2-audit-log": [],
+  });
+
+  const contas = cat.users.filter((u) => !u.resourceId);
+  log(`
+Banco limpo gravado em ${DB_PATH}
+
+  CADASTRO (de pé, pronto pra usar)
+    ${cat.locations.length} salas · ${cat.activities.length} métodos · ${cat.equipment.length} equipamentos
+    ${cat.sponsors.length} patrocinadores · ${cat.supplies.length} insumos · ${cat.calendar.length} feriados
+
+  EQUIPE
+    ${cat.collaborators.length} colaboradores: ${cat.collaborators.map((c) => c.name).join(", ")}
+    ${cat.doctors.length} médicos: ${cat.doctors.map((c) => c.name).join(", ")}
+    Todos habilitados em todos os métodos — pra nada travar por falta de treinamento.
+
+  LOGINS (${cat.users.length} contas)
+    ${contas.map((u) => u.name).join("  ·  ")}
+    Cada colaborador e cada médico também entra pelo próprio nome.
+    TODAS as contas usam o mesmo PIN: ${PIN_DEMO}
+
+  MOVIMENTO
+    Zero estudos, reservas, estimativas, treinamentos, horas extras e histórico.
+
+Suba o servidor com:  node server.js`);
+}
+
 function main() {
   if (fs.existsSync(DB_PATH) && !FORCE) {
     console.error(`Já existe um banco em ${DB_PATH}.`);
@@ -966,6 +1071,8 @@ function main() {
     process.exit(1);
   }
   if (FORCE) [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`].forEach((f) => { if (fs.existsSync(f)) fs.unlinkSync(f); });
+
+  if (VAZIO) return gerarBaseLimpa();
 
   log(`Gerando demonstração — hoje é ${T0}, janela de ${WINDOW_START} a ${WINDOW_END} (semente ${SEED}).`);
 
