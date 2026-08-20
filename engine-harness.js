@@ -38,6 +38,27 @@ const FN_NAMES = [
   "supplyOutlook", "capacityReuse", "conversionStats",
   "seedStudiesBundle", "seedLocations", "seedActivities", "seedEquipment",
   "seedCollaborators", "seedDoctors", "seedSupplies", "seedSponsors", "seedNiches",
+  // Grupos do estudo e tipos de treinamento
+  "studyParticipantsTotal", "studyGroupProblems", "groupRoomProblem", "staleGroupBookings",
+  "trainingTypeBlank", "trainingRequestFromType", "trainingTypeProblems",
+  /* Técnico do estudo e atividades mestres. `technicianProblems` entra aqui,
+   * e não na lista de extras de quem chama, porque o `validateBooking` passou
+   * a depender dela — função do núcleo tem que vir junto com o núcleo, senão
+   * o extrator monta um motor que quebra na primeira validação. */
+  "technicianProblems", "collaboratorLockReason", "lockedCollaboratorIds",
+  "baselineTimepoint", "studyBaseline", "studyStatusAuto",
+  "studyMasterTechnician", "studyTechnicians",
+  "technicianSwapPlan", "technicianCandidates",
+  // Continuidade do operador — o `validateBooking` chama `equipmentOperatorProblems`.
+  "equipmentOperatorFor", "equipmentOperatorProblems", "studyEquipmentOperators",
+  "operatorSwapPlan",
+  "studySavePayload",
+  "encaixeOpcoes", "blocosDeSala", "situacaoDaReserva", "resumoDoDia",
+  "conflictingBookingsFor",
+  "pullPlan",
+  "staffRequestBlank",
+  "staleStaffRequests",
+  "aplicarSugestaoDeRegras",
 ];
 
 /* Constantes de topo. Aqui a ORDEM IMPORTA: o extrator emite os `const` na
@@ -54,6 +75,11 @@ const CONST_NAMES = [
   "ACTIVITY_NAMES", "LOCATION_NAMES", "SPONSOR_NAMES", "CUSTOM_NICHE_SPONSORS",
   "SCREENS", "screenCap", "SCREEN_CAPS", "TELAS_DO_DIA_A_DIA", "DEFAULT_ROLE_SCREENS",
   "CAPABILITIES", "CAP_GROUPS", "DEFAULT_ROLE_CAPABILITIES", "EDITABLE_ROLES",
+  "studyGroups", "studyGroupById",
+  // Usadas dentro do `validateBooking` — mesma razão do bloco acima.
+  "isMasterActivity", "isYieldableActivity",
+  "STAFF_REQUEST_STATUS", "ENCAIXE_META", "SITUACAO_META",
+  "SUGESTAO_CEDIVEIS", "SUGESTAO_MESTRES",
 ];
 
 /* Anda pelo texto contando (){}[] fora de string/comentário e devolve a

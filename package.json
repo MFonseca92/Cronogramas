@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node engine.test.js && node server.test.js && node adapter.test.js",
+    "test": "node engine.test.js && node seed.test.js && node server.test.js && node adapter.test.js",
     "test:engine": "node engine.test.js",
     "test:server": "node server.test.js",
     "test:adapter": "node adapter.test.js",
@@ -17,6 +17,7 @@
     "backup": "node server.js --backup",
     "indice": "node atualizar-indice.js",
     "indice:check": "node atualizar-indice.js --check",
-    "demo:limpo": "node demo-seed.js --vazio --force && node demo-check.js"
+    "demo:limpo": "node demo-seed.js --vazio --force && node demo-check.js",
+    "test:seed": "node seed.test.js"
   }
 }

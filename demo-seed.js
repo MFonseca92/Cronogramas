@@ -92,7 +92,7 @@ const shuffle = (list) => {
  * cadastro de exemplo (que sorteia salas e durações) também ser reprodutível. */
 const E = loadEngine({
   htmlPath: path.join(__dirname, "Cronogramas_v2.html"),
-  fns: ["seedUsers", "seedCalendar"],
+  fns: ["seedUsers", "seedCalendar", "seedTrainingTypes"],
   random: rand,
 });
 
@@ -198,7 +198,11 @@ function buildCatalog({ enxuto = false } = {}) {
   if (enxuto) {
     collaborators.forEach((c) => { activities.forEach((act) => { c.levels[act.id] = int(4, 5); }); });
     const users = padronizarPins(E.seedUsers(collaborators, doctors), collaborators, doctors);
-    return { niches, sponsors, supplies, locations, activities, equipment, doctors, collaborators, users, calendar: E.seedCalendar(), carentes: [] };
+    return {
+      niches, sponsors, supplies, locations, activities, equipment, doctors, collaborators, users,
+      calendar: E.seedCalendar(), carentes: [],
+      trainingTypes: E.seedTrainingTypes(activities, locations, equipment),
+    };
   }
 
   const MIN_APTOS = 5;
@@ -220,7 +224,8 @@ function buildCatalog({ enxuto = false } = {}) {
   const users = padronizarPins(E.seedUsers(collaborators, doctors), collaborators, doctors);
   const calendar = E.seedCalendar();
 
-  return { niches, sponsors, supplies, locations, activities, equipment, doctors, collaborators, users, calendar, carentes };
+  const trainingTypes = E.seedTrainingTypes(activities, locations, equipment);
+  return { niches, sponsors, supplies, locations, activities, equipment, doctors, collaborators, users, calendar, carentes, trainingTypes };
 }
 
 /* ---------------------------------------------------------------------- */
@@ -294,11 +299,26 @@ function buildStudies(cat) {
     return {
       id: id("study"), name: `Protocolo ${code}`, sponsorId: sponsor.id,
       createdAt: isoAt(E.addDays(baseline, -int(8, 30)), "10:00"), status,
-      baselineDate: baseline, participantsPlanned: int(10, 60),
+      baselineDate: baseline,
       endDate: E.addDays(fim, int(5, 25)),
       _protocolo: protocolo,
+      /* Grupos de 2 a 4 pessoas, de propósito: as salas têm capacidade a
+       * partir de 4 e alguns métodos limitam em 4 participantes. Grupo maior
+       * que isso simplesmente não fecharia horário nenhum, e a demonstração
+       * nasceria com metade das visitas sem agenda — parecendo defeito do
+       * motor quando seria só um cadastro impossível. */
+      groups: Array.from({ length: int(2, 3) }, (_, gi) => ({
+        id: id("grp"), name: `Grupo ${String.fromCharCode(65 + gi)}`, size: int(2, 4),
+      })),
     };
   });
+}
+
+/* Com grupos, o total do estudo é a soma deles — a mesma regra da tela
+ * (`studyParticipantsTotal`). Guardado junto pra quem lê o estudo não
+ * precisar somar. */
+function totalDosGrupos(s) {
+  return (s.groups || []).reduce((t, g) => t + (Number(g.size) || 0), 0);
 }
 
 function buildTimepoints(studies) {
@@ -328,12 +348,14 @@ function buildTimepoints(studies) {
 /* ---------------------------------------------------------------------- */
 const SEM_EXCLUIDOS = { locations: [], collaborators: [], doctors: [] };
 
-function agendarVisita({ cat, data, porDia, date, quantas, meta, notBefore = 8 * 60, simultaneas = false }) {
+function agendarVisita({ cat, data, porDia, date, quantas, meta, notBefore = 8 * 60, simultaneas = false, grupo = null }) {
   const metodos = shuffle(cat.activities).slice(0, quantas);
   const rows = metodos.map((act, i) => ({
     rowId: id("row"), activityId: act.id, durationMin: act.durationMin || 60,
     roomId: null, equipmentId: null, accessoryIds: [], needDoctor: chance(0.18),
-    participants: act.maxParticipants ? int(2, act.maxParticipants) : null,
+    // Com grupo, o número de participantes VEM DELE — é esse o ponto do
+    // cadastro de grupos. Sem grupo, sorteia como antes.
+    participants: grupo ? Number(grupo.size) || null : (act.maxParticipants ? int(2, act.maxParticipants) : null),
     minLevel: act.minLevel || 3,
     // Atividades simultâneas: mesma sala, mesmo horário, gente diferente. É um
     // caso real do setor (apoio rodando junto com a lavagem) e um recurso que
@@ -364,6 +386,9 @@ function agendarVisita({ cat, data, porDia, date, quantas, meta, notBefore = 8 *
         accessoryIds: sub.row.accessoryIds, activityId: act.id, minLevel: sub.row.minLevel,
         collaboratorIds: equipe, needDoctor: sub.row.needDoctor, doctorId: it.doctor?.id || null,
         participantCount: sub.row.participants,
+        // Grupo de PESSOAS do estudo. Não confundir com `groupId`, que é o
+        // grupo de ATIVIDADES simultâneas na mesma sala.
+        studyGroupId: grupo?.id || null,
         groupId: gid,
         status: E.bookingStatusFor({ collaboratorIds: equipe, needDoctor: sub.row.needDoctor, doctorId: it.doctor?.id || null }, act),
         ...meta,
@@ -443,6 +468,9 @@ function buildBookings(cat, studies, timepoints) {
     if (!date) return;
     const novas = agendarVisita({
       cat, data, porDia, date,
+      // Cada visita atende UM grupo. É assim no setor: o grupo A vem numa
+      // data, o grupo B em outra.
+      grupo: (study.groups || []).length ? pick(study.groups) : null,
       quantas: int(3, 6),
       notBefore: 8 * 60 + int(0, 4) * 15,
       // Uma visita em cada seis tem duas atividades rodando ao mesmo tempo na
@@ -1026,6 +1054,7 @@ function gerarBaseLimpa() {
     "crb2-collaborators": cat.collaborators,
     "crb2-users": cat.users,
     "crb2-calendar": cat.calendar, // só os feriados nacionais
+    "crb2-training-types": cat.trainingTypes,
     "crb2-role-capabilities": E.DEFAULT_ROLE_CAPABILITIES,
     // Movimento — vazio
     "crb2-studies": [],
@@ -1047,6 +1076,7 @@ Banco limpo gravado em ${DB_PATH}
   CADASTRO (de pé, pronto pra usar)
     ${cat.locations.length} salas · ${cat.activities.length} métodos · ${cat.equipment.length} equipamentos
     ${cat.sponsors.length} patrocinadores · ${cat.supplies.length} insumos · ${cat.calendar.length} feriados
+    ${cat.trainingTypes.length} tipos de treinamento
 
   EQUIPE
     ${cat.collaborators.length} colaboradores: ${cat.collaborators.map((c) => c.name).join(", ")}
@@ -1102,7 +1132,7 @@ function main() {
   const auditLog = buildAudit(cat);
 
   // `_protocolo` é andaime do gerador, não campo do modelo.
-  const studiesLimpos = studies.map(({ _protocolo, ...s }) => s);
+  const studiesLimpos = studies.map(({ _protocolo, ...s }) => ({ ...s, participantsPlanned: totalDosGrupos(s) }));
 
   const problemas = verificar(cat, finais, estimates);
   if (problemas.length) {
@@ -1125,6 +1155,7 @@ function main() {
     "crb2-collaborators": cat.collaborators,
     "crb2-users": cat.users,
     "crb2-calendar": cat.calendar,
+    "crb2-training-types": cat.trainingTypes,
     "crb2-studies": studiesLimpos,
     "crb2-timepoints": timepoints,
     "crb2-bookings": finais,
@@ -1145,6 +1176,7 @@ Banco gravado em ${DB_PATH}
   ${cat.locations.length} salas · ${cat.activities.length} métodos · ${cat.equipment.length} equipamentos
   ${cat.collaborators.length} colaboradores · ${cat.doctors.length} médicos · ${cat.users.length} usuários de login
   ${studiesLimpos.length} estudos · ${timepoints.length} visitas de protocolo
+  ${studiesLimpos.reduce((t, x) => t + (x.groups || []).length, 0)} grupos de participantes · ${cat.trainingTypes.length} tipos de treinamento
   ${finais.length} reservas em ${diasComAgenda} dias (${(finais.length / diasComAgenda).toFixed(1)} por dia)
     ${concluidas} já concluídas · ${emAndamento} em andamento agora
   ${estimates.length} estimativas · ${trainingRequests.length} treinamentos · ${overtimeRequests.length} horas extras

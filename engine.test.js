@@ -2172,5 +2172,895 @@ test("base inteira sem ninguém logado não gera aviso nenhum", () => {
 });
 
 /* ---------------------------------------------------------------------- */
+/* Grupos do estudo                                                        */
+console.log("\nGrupos do estudo");
+
+const ESTUDO = (over = {}) => ({
+  id: "s1", name: "Protocolo X", status: "ativo", baselineDate: "2026-08-19",
+  groups: [{ id: "g1", name: "Grupo A", size: 12 }, { id: "g2", name: "Grupo B", size: 8 }],
+  ...over,
+});
+
+test("o total do estudo é a soma dos grupos", () => {
+  assert.equal(E.studyParticipantsTotal(ESTUDO()), 20);
+});
+
+test("sem grupos, vale o número solto de sempre", () => {
+  // Estudo cadastrado antes dos grupos existirem não pode passar a valer zero.
+  assert.equal(E.studyParticipantsTotal({ id: "s1", participantsPlanned: 30 }), 30);
+  assert.equal(E.studyParticipantsTotal({ id: "s1", groups: [] }), null);
+  assert.equal(E.studyParticipantsTotal(undefined), null);
+});
+
+test("acha o grupo pelo id, e devolve null quando não existe", () => {
+  assert.equal(E.studyGroupById(ESTUDO(), "g2").name, "Grupo B");
+  assert.equal(E.studyGroupById(ESTUDO(), "g9"), null);
+  assert.equal(E.studyGroupById(null, "g1"), null);
+});
+
+test("grupo sem nome, repetido ou com tamanho zero é recusado", () => {
+  assert.ok(E.studyGroupProblems([{ id: "a", name: "  ", size: 5 }])[0].includes("sem nome"));
+  const repetido = E.studyGroupProblems([{ id: "a", name: "Grupo A", size: 5 }, { id: "b", name: "grupo a", size: 5 }]);
+  assert.ok(repetido.some((m) => m.includes("mais de um grupo")), "nome repetido, ignorando maiúsculas");
+  assert.ok(E.studyGroupProblems([{ id: "a", name: "Grupo A", size: 0 }]).some((m) => m.includes("maior que zero")));
+  assert.deepEqual(E.studyGroupProblems([{ id: "a", name: "Grupo A", size: 5 }]), []);
+  assert.deepEqual(E.studyGroupProblems(null), []);
+});
+
+test("grupo maior que a sala é barrado, e o menor limite é quem manda", () => {
+  const sala = { id: "l1", name: "Sala A", capacity: 10 };
+  const metodo = { id: "act1", maxParticipants: 6 };
+  assert.equal(E.groupRoomProblem(4, sala, metodo), null);
+  // Entre a capacidade da sala (10) e o máximo do método (6), vale 6.
+  assert.ok(E.groupRoomProblem(8, sala, metodo).includes("comporta 6"));
+  assert.ok(E.groupRoomProblem(12, sala, {}).includes("comporta 10"));
+  // Sem limite nenhum cadastrado, nada a barrar.
+  assert.equal(E.groupRoomProblem(50, { id: "l2", name: "Sala B" }, {}), null);
+  assert.equal(E.groupRoomProblem(0, sala, metodo), null);
+});
+
+test("mudar o tamanho do grupo acusa as reservas FUTURAS que ficaram para trás", () => {
+  const estudos = [ESTUDO()];
+  const bookings = [
+    { id: "b1", studyId: "s1", studyGroupId: "g1", participantCount: 12, date: "2026-08-25" },
+    { id: "b2", studyId: "s1", studyGroupId: "g1", participantCount: 9, date: "2026-08-26" },
+  ];
+  const r = E.staleGroupBookings(bookings, estudos, "2026-08-19");
+  assert.equal(r.length, 1);
+  assert.equal(r[0].booking.id, "b2");
+  assert.equal(r[0].esperado, 12);
+  assert.equal(r[0].atual, 9);
+});
+
+test("reserva que já aconteceu não é corrigida — registra o que aconteceu", () => {
+  const r = E.staleGroupBookings(
+    [{ id: "b1", studyId: "s1", studyGroupId: "g1", participantCount: 5, date: "2026-08-01" }],
+    [ESTUDO()], "2026-08-19");
+  assert.equal(r.length, 0);
+});
+
+test("grupo excluído do estudo aparece como problema", () => {
+  const r = E.staleGroupBookings(
+    [{ id: "b1", studyId: "s1", studyGroupId: "gX", participantCount: 5, date: "2026-08-25" }],
+    [ESTUDO()], "2026-08-19");
+  assert.equal(r.length, 1);
+  assert.ok(r[0].motivo.includes("excluído"));
+});
+
+test("reserva sem grupo não entra na conferência", () => {
+  const r = E.staleGroupBookings(
+    [{ id: "b1", studyId: "s1", participantCount: 5, date: "2026-08-25" }],
+    [ESTUDO()], "2026-08-19");
+  assert.equal(r.length, 0);
+});
+
+/* ---------------------------------------------------------------------- */
+/* Tipos de treinamento                                                    */
+console.log("\nTipos de treinamento");
+
+const DADOS_TT = {
+  activities: [{ id: "act1", name: "Corneometria" }],
+  locations: [{ id: "loc1", name: "Sala A" }],
+  equipment: [
+    { id: "eq1", name: "MPA 5", isAccessory: false, accessoryIds: ["acc1"] },
+    { id: "acc1", name: "Corneometer", isAccessory: true },
+    { id: "acc9", name: "Sonda de outro aparelho", isAccessory: true },
+  ],
+  collaborators: [{ id: "col1", name: "Ana" }],
+};
+const TIPO = (over = {}) => ({
+  id: "t1", name: "Corneometria — prática", activityId: "act1", durationMin: 90,
+  locationId: "loc1", equipmentId: "eq1", accessoryIds: ["acc1"], trainerId: "col1",
+  requiredLevel: 3, notes: "", active: true, ...over,
+});
+
+test("o tipo preenche a solicitação", () => {
+  const r = E.trainingRequestFromType(TIPO());
+  assert.equal(r.trainingTypeId, "t1");
+  assert.equal(r.durationMin, 90);
+  assert.equal(r.locationId, "loc1");
+  assert.equal(r.equipmentId, "eq1");
+  assert.deepEqual(r.accessoryIds, ["acc1"]);
+  assert.equal(r.trainerId, "col1");
+});
+
+test("o que a pessoa já preencheu ganha do tipo", () => {
+  // Escolher o tipo depois de ajustar a duração não pode apagar o ajuste.
+  const r = E.trainingRequestFromType(TIPO(), { durationMin: 45, requiredLevel: 5 });
+  assert.equal(r.durationMin, 45);
+  assert.equal(r.requiredLevel, 5);
+  assert.equal(r.locationId, "loc1", "o que ela não preencheu continua vindo do tipo");
+});
+
+test("campo vazio não conta como preenchido", () => {
+  const r = E.trainingRequestFromType(TIPO(), { locationId: "", equipmentId: null, trainerId: undefined });
+  assert.equal(r.locationId, "loc1");
+  assert.equal(r.equipmentId, "eq1");
+  assert.equal(r.trainerId, "col1");
+});
+
+test("sem tipo, a solicitação sai com os padrões", () => {
+  const r = E.trainingRequestFromType(null);
+  assert.equal(r.trainingTypeId, null);
+  assert.equal(r.durationMin, E.TRAINING_DEFAULT_MIN);
+  assert.deepEqual(r.accessoryIds, []);
+});
+
+test("a lista de acessórios do tipo é uma cópia, não a mesma", () => {
+  // Sem a cópia, editar a solicitação alteraria o TIPO cadastrado.
+  const tipo = TIPO();
+  const r = E.trainingRequestFromType(tipo);
+  r.accessoryIds.push("acc9");
+  assert.deepEqual(tipo.accessoryIds, ["acc1"]);
+});
+
+test("tipo sem nome ou com duração inválida é recusado", () => {
+  assert.ok(E.trainingTypeProblems(TIPO({ name: "  " }), DADOS_TT).some((m) => m.includes("nome")));
+  assert.ok(E.trainingTypeProblems(TIPO({ durationMin: 0 }), DADOS_TT).some((m) => m.includes("duração")));
+  assert.deepEqual(E.trainingTypeProblems(TIPO(), DADOS_TT), []);
+});
+
+test("referência morta é acusada no cadastro, onde dá pra consertar", () => {
+  assert.ok(E.trainingTypeProblems(TIPO({ locationId: "loc9" }), DADOS_TT).some((m) => m.includes("sala")));
+  assert.ok(E.trainingTypeProblems(TIPO({ equipmentId: "eq9", accessoryIds: [] }), DADOS_TT).some((m) => m.includes("equipamento")));
+  assert.ok(E.trainingTypeProblems(TIPO({ activityId: "act9" }), DADOS_TT).some((m) => m.includes("atividade")));
+  assert.ok(E.trainingTypeProblems(TIPO({ trainerId: "col9" }), DADOS_TT).some((m) => m.includes("instrutor")));
+});
+
+test("acessório que não é do aparelho escolhido é recusado", () => {
+  // A sonda do MPA A não serve no MPA B — mesma regra que a reserva já aplica.
+  const r = E.trainingTypeProblems(TIPO({ accessoryIds: ["acc9"] }), DADOS_TT);
+  assert.ok(r.some((m) => m.includes("não pertence")));
+});
+
+test("tipo sem sala, sem aparelho e sem instrutor é válido", () => {
+  // Nem toda aula precisa de recurso: teoria numa sala qualquer é normal.
+  const r = E.trainingTypeProblems(TIPO({ locationId: null, equipmentId: null, accessoryIds: [], trainerId: null }), DADOS_TT);
+  assert.deepEqual(r, []);
+});
+
+/* ---------------------------------------------------------------------- */
+/* Técnico do estudo e atividades mestres                                  */
+console.log("\nTécnico do estudo e atividades mestres");
+
+const ACT_MESTRE = { id: "am", name: "Corneometria", minLevel: 3, mestre: true, durationMin: 60 };
+const ACT_CEDIVEL = { id: "ac", name: "Apoio", minLevel: 1, cedivel: true, durationMin: 60 };
+const ACT_MEIO = { id: "an", name: "Avaliação Técnica", minLevel: 3, durationMin: 60 };
+const ATIVIDADES = [ACT_MESTRE, ACT_CEDIVEL, ACT_MEIO];
+const ESTUDO_T = (over = {}) => ({ id: "s1", name: "Protocolo X", technicianId: "col1", ...over });
+const RES = (over = {}) => ({
+  id: "b1", studyId: "s1", activityId: "am", date: "2026-08-25",
+  start: "09:00", end: "10:00", collaboratorIds: ["col1", "col2"], ...over,
+});
+
+test("os três estados de uma atividade não se misturam", () => {
+  assert.equal(E.isMasterActivity(ACT_MESTRE), true);
+  assert.equal(E.isYieldableActivity(ACT_MESTRE), false, "mestre nunca é cedível, nem marcada como tal");
+  assert.equal(E.isYieldableActivity(ACT_CEDIVEL), true);
+  assert.equal(E.isMasterActivity(ACT_MEIO), false);
+  assert.equal(E.isYieldableActivity(ACT_MEIO), false, "o caso do meio: negocia, mas com pedido");
+  assert.equal(E.isMasterActivity(undefined), false);
+});
+
+test("mestre e cedível ao mesmo tempo: mestre ganha", () => {
+  const confuso = { id: "x", mestre: true, cedivel: true };
+  assert.equal(E.isYieldableActivity(confuso), false);
+});
+
+test("na atividade mestre ninguém da equipe pode ser trocado", () => {
+  const travados = E.lockedCollaboratorIds(RES(), ESTUDO_T(), ACT_MESTRE);
+  assert.deepEqual(travados.sort(), ["col1", "col2"]);
+});
+
+test("em atividade mestre o motivo é a atividade, não o cargo de ninguém", () => {
+  // O técnico saiu do cadastro: quem trava a equipe é a atividade ser mestre.
+  const motivo = E.collaboratorLockReason("col1", RES(), ESTUDO_T({ technicianId: null }), ACT_MESTRE);
+  assert.ok(motivo.includes("mestre"), motivo);
+});
+
+test("em atividade cedível ninguém está travado", () => {
+  const r = RES({ activityId: "ac" });
+  assert.deepEqual(E.lockedCollaboratorIds(r, ESTUDO_T(), ACT_CEDIVEL), []);
+});
+
+test("atividade já iniciada trava a equipe, mesmo não sendo mestre", () => {
+  const iniciada = RES({ activityId: "an", startedAt: "2026-08-25T09:05:00.000Z" });
+  assert.ok(E.collaboratorLockReason("col1", iniciada, ESTUDO_T(), ACT_MEIO).includes("já começou"));
+  const concluida = RES({ activityId: "an", completedAt: "2026-08-25T10:00:00.000Z" });
+  assert.ok(E.collaboratorLockReason("col1", concluida, ESTUDO_T(), ACT_MEIO).includes("concluída"));
+});
+
+test("quem não está na reserva não é travado por ela", () => {
+  assert.equal(E.collaboratorLockReason("col9", RES(), ESTUDO_T(), ACT_MESTRE), null);
+});
+
+test("a PRIMEIRA visita de uma atividade mestre define o técnico, não desobedece", () => {
+  // Sem nenhuma outra reserva da mesma atividade no estudo, não há a quem obedecer.
+  const r = E.technicianProblems(RES(), ESTUDO_T({ technicianId: null }), ACT_MESTRE, "2026-08-19", [RES()]);
+  assert.deepEqual(r, []);
+});
+
+test("da segunda visita em diante, tem que ser a mesma pessoa", () => {
+  const primeira = RES({ id: "b1", date: "2026-08-20", collaboratorIds: ["col1"] });
+  const segunda = RES({ id: "b2", date: "2026-08-27", collaboratorIds: ["col7"] });
+  const universo = [primeira, segunda];
+  const r = E.technicianProblems(segunda, ESTUDO_T({ technicianId: null }), ACT_MESTRE, "2026-08-19", universo);
+  assert.equal(r.length, 1);
+  assert.ok(/altera a leitura/.test(r[0]), r[0]);
+
+  const certa = { ...segunda, collaboratorIds: ["col1"] };
+  assert.deepEqual(
+    E.technicianProblems(certa, ESTUDO_T({ technicianId: null }), ACT_MESTRE, "2026-08-19", [primeira, certa]),
+    [],
+  );
+});
+
+test("quem define é a visita mais cedo, não a que foi cadastrada primeiro", () => {
+  const tarde = RES({ id: "b2", date: "2026-09-10", collaboratorIds: ["col7"] });
+  const cedo = RES({ id: "b1", date: "2026-08-20", collaboratorIds: ["col1"] });
+  assert.equal(E.studyMasterTechnician("s1", "am", [tarde, cedo]), "col1");
+});
+
+test("base antiga com técnico no cadastro continua sendo cobrada", () => {
+  const semEle = RES({ collaboratorIds: ["col2", "col3"] });
+  const r = E.technicianProblems(semEle, ESTUDO_T(), ACT_MESTRE, "2026-08-19", [semEle]);
+  assert.equal(r.length, 1, "o campo antigo ainda vale quando não há reserva anterior");
+});
+
+test("atividade que não é mestre não cobra técnico", () => {
+  assert.deepEqual(E.technicianProblems(RES({ activityId: "an" }), ESTUDO_T({ technicianId: null }), ACT_MEIO, "2026-08-19", []), []);
+});
+
+test("o passado não é cobrado — não há como consertar o que já aconteceu", () => {
+  const passada = RES({ date: "2026-08-01", collaboratorIds: ["col9"] });
+  assert.deepEqual(E.technicianProblems(passada, ESTUDO_T(), ACT_MESTRE, "2026-08-19"), []);
+  const concluida = RES({ completedAt: "2026-08-25T10:00:00.000Z", collaboratorIds: ["col9"] });
+  assert.deepEqual(E.technicianProblems(concluida, ESTUDO_T(), ACT_MESTRE, "2026-08-19"), []);
+});
+
+/* --- a cascata (item 3) ------------------------------------------------ */
+const RESERVAS_ESTUDO = [
+  { id: "b1", studyId: "s1", activityId: "am", date: "2026-08-01", start: "09:00", end: "10:00", collaboratorIds: ["col1"], completedAt: "x" },
+  { id: "b2", studyId: "s1", activityId: "am", date: "2026-08-25", start: "09:00", end: "10:00", collaboratorIds: ["col1", "col5"] },
+  { id: "b3", studyId: "s1", activityId: "am", date: "2026-09-08", start: "09:00", end: "10:00", collaboratorIds: ["col1"] },
+  { id: "b4", studyId: "s1", activityId: "ac", date: "2026-09-09", start: "09:00", end: "10:00", collaboratorIds: ["col1"] },
+];
+
+test("trocar o técnico muda TODAS as visitas futuras de atividade mestre", () => {
+  const plano = E.technicianSwapPlan({
+    study: ESTUDO_T(), bookings: RESERVAS_ESTUDO, activities: ATIVIDADES,
+    novoTecnicoId: "col7", hoje: "2026-08-19",
+  });
+  assert.deepEqual(plano.alteradas.map((b) => b.id).sort(), ["b2", "b3"]);
+  assert.ok(plano.alteradas.every((b) => b.collaboratorIds.includes("col7")));
+  assert.ok(plano.alteradas.every((b) => !b.collaboratorIds.includes("col1")), "o antigo sai");
+  assert.ok(plano.alteradas[0].collaboratorIds.includes("col5"), "o resto da equipe fica");
+  assert.equal(plano.podeAplicar, true);
+});
+
+test("a visita que já aconteceu fica como está", () => {
+  const plano = E.technicianSwapPlan({
+    study: ESTUDO_T(), bookings: RESERVAS_ESTUDO, activities: ATIVIDADES,
+    novoTecnicoId: "col7", hoje: "2026-08-19",
+  });
+  assert.deepEqual(plano.intocadas.map((b) => b.id), ["b1"]);
+});
+
+test("atividade não-mestre do mesmo estudo não entra na cascata", () => {
+  const plano = E.technicianSwapPlan({
+    study: ESTUDO_T(), bookings: RESERVAS_ESTUDO, activities: ATIVIDADES,
+    novoTecnicoId: "col7", hoje: "2026-08-19",
+  });
+  assert.ok(!plano.alteradas.some((b) => b.id === "b4"));
+});
+
+test("se o novo técnico já está ocupado, a troca não é aplicável", () => {
+  const ocupado = [...RESERVAS_ESTUDO,
+    { id: "z1", studyId: "s9", activityId: "an", date: "2026-08-25", start: "09:00", end: "10:00", collaboratorIds: ["col7"] }];
+  const plano = E.technicianSwapPlan({
+    study: ESTUDO_T(), bookings: ocupado, activities: ATIVIDADES,
+    novoTecnicoId: "col7", hoje: "2026-08-19",
+  });
+  assert.equal(plano.podeAplicar, false);
+  assert.equal(plano.conflitos.length, 1);
+  assert.equal(plano.conflitos[0].booking.id, "b2");
+  // A outra visita segue viável — o plano mostra o que dá e o que não dá.
+  assert.deepEqual(plano.alteradas.map((b) => b.id), ["b3"]);
+});
+
+test("o resumo diz em uma frase o que vai acontecer", () => {
+  const plano = E.technicianSwapPlan({
+    study: ESTUDO_T(), bookings: RESERVAS_ESTUDO, activities: ATIVIDADES,
+    novoTecnicoId: "col7", hoje: "2026-08-19",
+  });
+  assert.ok(plano.resumo.includes("2 visita"));
+  assert.ok(plano.resumo.includes("1 já aconteceram"));
+});
+
+test("só entra na lista de técnicos quem tem nível nas atividades mestres", () => {
+  const dados = {
+    activities: ATIVIDADES,
+    collaborators: [
+      { id: "col1", name: "Apta", levels: { am: 4 }, active: true },
+      { id: "col2", name: "Sem nível", levels: { am: 1 }, active: true },
+      { id: "col3", name: "Inativa", levels: { am: 5 }, active: false },
+    ],
+  };
+  const r = E.technicianCandidates(ESTUDO_T(), RESERVAS_ESTUDO, dados);
+  assert.deepEqual(r.map((c) => c.name), ["Apta"]);
+});
+
+test("estudo sem atividade mestre aceita qualquer pessoa ativa como técnico", () => {
+  const dados = { activities: ATIVIDADES, collaborators: [{ id: "col2", name: "Qualquer", levels: {}, active: true }] };
+  const soCedivel = [{ id: "b9", studyId: "s1", activityId: "ac", date: "2026-09-01", start: "09:00", end: "10:00", collaboratorIds: [] }];
+  assert.equal(E.technicianCandidates(ESTUDO_T(), soCedivel, dados).length, 1);
+});
+
+/* ---------------------------------------------------------------------- */
+/* Continuidade do operador do equipamento                                 */
+/*                                                                          */
+/* A regra tem duas metades opostas, e é a fronteira entre elas que importa: */
+/* antes de começar troca-se em cascata; depois de começar não se troca.     */
+console.log("\nContinuidade do operador do equipamento");
+
+const ATIVS_OP = [{ id: "a1", name: "Corneometria", minLevel: 3, durationMin: 60 }];
+const EST_OP = (over = {}) => ({ id: "s1", name: "Protocolo X", ...over });
+const B = (over = {}) => ({
+  id: "b1", studyId: "s1", activityId: "a1", equipmentId: "eq1",
+  date: "2026-09-01", start: "09:00", end: "10:00", collaboratorIds: ["col1"], ...over,
+});
+
+test("ninguém operou ainda: não há amarra", () => {
+  const futuras = [B({ id: "b1" }), B({ id: "b2", date: "2026-09-08" })];
+  assert.equal(E.equipmentOperatorFor("s1", "eq1", futuras, EST_OP()), null);
+  assert.deepEqual(E.equipmentOperatorProblems(futuras[1], EST_OP(), futuras, {}, "2026-08-20"), []);
+});
+
+test("depois de a primeira visita rodar, o operador fica amarrado", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-10", collaboratorIds: ["col1"], completedAt: "x" }),
+    B({ id: "b2", date: "2026-09-08", collaboratorIds: ["col9"] }),
+  ];
+  assert.equal(E.equipmentOperatorFor("s1", "eq1", bookings, EST_OP()), "col1");
+  const dados = { collaborators: [{ id: "col1", name: "Camila" }], equipment: [{ id: "eq1", name: "MPA 5" }] };
+  const r = E.equipmentOperatorProblems(bookings[1], EST_OP(), bookings, dados, "2026-08-20");
+  assert.equal(r.length, 1);
+  assert.ok(r[0].includes("Camila"));
+  assert.ok(r[0].includes("MPA 5"));
+});
+
+test("mantendo a mesma pessoa, não há problema", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-10", completedAt: "x" }),
+    B({ id: "b2", date: "2026-09-08", collaboratorIds: ["col1", "col5"] }),
+  ];
+  assert.deepEqual(E.equipmentOperatorProblems(bookings[1], EST_OP(), bookings, {}, "2026-08-20"), []);
+});
+
+test("a amarra é por ESTUDO e por EQUIPAMENTO, não global", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-10", completedAt: "x", collaboratorIds: ["col1"] }),
+    B({ id: "b2", date: "2026-09-08", studyId: "s2", collaboratorIds: ["col9"] }),
+    B({ id: "b3", date: "2026-09-08", equipmentId: "eq2", collaboratorIds: ["col9"] }),
+  ];
+  assert.deepEqual(E.equipmentOperatorProblems(bookings[1], EST_OP({ id: "s2" }), bookings, {}, "2026-08-20"), [],
+    "outro estudo não herda a amarra");
+  assert.deepEqual(E.equipmentOperatorProblems(bookings[2], EST_OP(), bookings, {}, "2026-08-20"), [],
+    "outro aparelho não herda a amarra");
+});
+
+test("com várias pessoas na primeira execução e sem técnico, não chuta", () => {
+  // Amarrar a pessoa errada bloquearia a agenda de quem nunca encostou no aparelho.
+  const bookings = [B({ id: "b1", date: "2026-08-10", completedAt: "x", collaboratorIds: ["col1", "col2"] })];
+  assert.equal(E.equipmentOperatorFor("s1", "eq1", bookings, EST_OP()), null);
+});
+
+test("com técnico definido, é ele o operador mesmo em equipe grande", () => {
+  const bookings = [B({ id: "b1", date: "2026-08-10", completedAt: "x", collaboratorIds: ["col1", "col2"] })];
+  assert.equal(E.equipmentOperatorFor("s1", "eq1", bookings, EST_OP({ technicianId: "col2" })), "col2");
+});
+
+test("o passado não é cobrado", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-10", completedAt: "x" }),
+    B({ id: "b2", date: "2026-08-15", collaboratorIds: ["col9"] }),
+  ];
+  assert.deepEqual(E.equipmentOperatorProblems(bookings[1], EST_OP(), bookings, {}, "2026-08-20"), []);
+});
+
+/* --- trocar antes de começar: cascata no estudo inteiro ---------------- */
+test("ANTES de começar, o substituto assume TODAS as visitas do estudo", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-09-01", collaboratorIds: ["col1", "col5"] }),
+    B({ id: "b2", date: "2026-09-08", collaboratorIds: ["col1"] }),
+    B({ id: "b3", date: "2026-09-15", collaboratorIds: ["col1"] }),
+  ];
+  const plano = E.operatorSwapPlan({
+    study: EST_OP({ technicianId: "col1" }), bookings, activities: ATIVS_OP,
+    equipmentId: "eq1", saiId: "col1", novoOperadorId: "col7", hoje: "2026-08-20",
+  });
+  assert.equal(plano.jaComecou, false);
+  assert.equal(plano.podeAplicar, true);
+  assert.deepEqual(plano.alteradas.map((b) => b.id), ["b1", "b2", "b3"]);
+  assert.ok(plano.alteradas.every((b) => b.collaboratorIds.includes("col7")));
+  assert.ok(plano.alteradas.every((b) => !b.collaboratorIds.includes("col1")));
+  assert.ok(plano.alteradas[0].collaboratorIds.includes("col5"), "o resto da equipe fica");
+});
+
+test("DEPOIS de começar, a troca é recusada por inteiro", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-10", collaboratorIds: ["col1"], completedAt: "x" }),
+    B({ id: "b2", date: "2026-09-08", collaboratorIds: ["col1"] }),
+  ];
+  const plano = E.operatorSwapPlan({
+    study: EST_OP({ technicianId: "col1" }), bookings, activities: ATIVS_OP,
+    equipmentId: "eq1", novoOperadorId: "col7", hoje: "2026-08-20",
+  });
+  assert.equal(plano.jaComecou, true);
+  assert.equal(plano.podeAplicar, false);
+  assert.equal(plano.alteradas.length, 0);
+  assert.ok(plano.resumo.includes("não muda mais"));
+});
+
+test("basta uma visita iniciada — não precisa ter terminado", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-20", collaboratorIds: ["col1"], startedAt: "2026-08-20T09:05:00.000Z" }),
+    B({ id: "b2", date: "2026-09-08", collaboratorIds: ["col1"] }),
+  ];
+  const plano = E.operatorSwapPlan({
+    study: EST_OP({ technicianId: "col1" }), bookings, activities: ATIVS_OP,
+    equipmentId: "eq1", novoOperadorId: "col7", hoje: "2026-08-20",
+  });
+  assert.equal(plano.jaComecou, true);
+});
+
+test("cascata é tudo ou nada: um conflito derruba a troca inteira", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-09-01", collaboratorIds: ["col1"] }),
+    B({ id: "b2", date: "2026-09-08", collaboratorIds: ["col1"] }),
+    // o substituto já está ocupado em outro estudo em 08/09
+    { id: "z1", studyId: "s9", activityId: "a1", date: "2026-09-08", start: "09:00", end: "10:00", collaboratorIds: ["col7"] },
+  ];
+  const plano = E.operatorSwapPlan({
+    study: EST_OP({ technicianId: "col1" }), bookings, activities: ATIVS_OP,
+    equipmentId: "eq1", saiId: "col1", novoOperadorId: "col7", hoje: "2026-08-20",
+  });
+  assert.equal(plano.podeAplicar, false, "trocar só parte deixaria duas pessoas operando o mesmo aparelho");
+  assert.equal(plano.conflitos.length, 1);
+  assert.ok(plano.resumo.includes("não pode ser parcial"));
+});
+
+test("o mapa de amarras do estudo lista equipamento por pessoa", () => {
+  const bookings = [
+    B({ id: "b1", date: "2026-08-10", equipmentId: "eq1", collaboratorIds: ["col1"], completedAt: "x" }),
+    B({ id: "b2", date: "2026-08-11", equipmentId: "eq2", collaboratorIds: ["col2"], completedAt: "x" }),
+    B({ id: "b3", date: "2026-09-08", equipmentId: "eq3", collaboratorIds: ["col3"] }),
+  ];
+  const mapa = E.studyEquipmentOperators(EST_OP(), bookings);
+  assert.equal(mapa.get("eq1"), "col1");
+  assert.equal(mapa.get("eq2"), "col2");
+  assert.equal(mapa.has("eq3"), false, "reserva que ainda não rodou não cria amarra");
+});
+
+/* ---------------------------------------------------------------------- */
+/* Negociação de equipe: puxar sem pedir, ou pedir                          */
+/*                                                                          */
+/* O que decide o caminho é a REGRA cadastrada na atividade de onde a pessoa */
+/* sairia — não o cargo de quem pede, não a atividade de destino.            */
+console.log("\nNegociação de equipe entre agendadores");
+
+const ATIVS_NEG = [
+  { id: "aMestre", name: "Corneometria", mestre: true, staffCount: 1, durationMin: 60 },
+  { id: "aCed", name: "Apoio", cedivel: true, staffCount: 1, durationMin: 60 },
+  { id: "aMeio", name: "Coleta", staffCount: 1, durationMin: 60 },
+  { id: "aDest", name: "Fototricograma", staffCount: 2, durationMin: 60 },
+];
+const ESTUDOS_NEG = [{ id: "s1", name: "Estudo A" }, { id: "s2", name: "Estudo B" }];
+const DEST = (over = {}) => ({
+  id: "dest", studyId: "s1", activityId: "aDest", date: "2026-09-01",
+  start: "09:00", end: "10:00", collaboratorIds: ["colX"], status: "pendente_equipe", ...over,
+});
+const OCUPA = (activityId, over = {}) => ({
+  id: "occ", studyId: "s2", activityId, date: "2026-09-01",
+  start: "09:00", end: "10:00", collaboratorIds: ["col1"], status: "confirmado", ...over,
+});
+const plano = (over = {}) => E.pullPlan({
+  collaboratorId: "col1", destino: DEST(), bookings: [DEST()], activities: ATIVS_NEG,
+  studies: ESTUDOS_NEG, calendar: [], ...over,
+});
+
+test("quem não tem nada no horário entra direto", () => {
+  const p = plano();
+  assert.equal(p.modo, "livre");
+  assert.deepEqual(p.saidas, []);
+  assert.ok(p.entrada.collaboratorIds.includes("col1"));
+});
+
+test("atividade cedível é PUXAR — sem pedir permissão a ninguém", () => {
+  const occ = OCUPA("aCed");
+  const p = plano({ bookings: [DEST(), occ] });
+  assert.equal(p.modo, "puxar");
+  assert.equal(p.saidas.length, 1);
+  assert.ok(!p.saidas[0].collaboratorIds.includes("col1"), "sai de onde estava");
+  assert.ok(p.entrada.collaboratorIds.includes("col1"), "entra no destino");
+});
+
+test("tirar alguém rebaixa o status da reserva de origem", () => {
+  // Sem isto a outra reserva continuaria dizendo "confirmado" sem ninguém nela.
+  const p = plano({ bookings: [DEST(), OCUPA("aCed")] });
+  assert.equal(p.saidas[0].status, "pendente_equipe");
+});
+
+test("atividade sem regra é PEDIR", () => {
+  const p = plano({ bookings: [DEST(), OCUPA("aMeio")] });
+  assert.equal(p.modo, "pedir");
+  assert.equal(p.impedimentos.length, 0, "dá pra pedir — só não dá pra puxar");
+});
+
+test("atividade mestre não sai nem pedindo", () => {
+  const p = plano({ bookings: [DEST(), OCUPA("aMestre")] });
+  assert.equal(p.modo, "impossivel");
+  assert.ok(p.impedimentos.join(" ").includes("mestre"));
+});
+
+test("atividade já iniciada não sai", () => {
+  const p = plano({ bookings: [DEST(), OCUPA("aCed", { startedAt: "2026-09-01T09:05:00.000Z" })] });
+  assert.equal(p.modo, "impossivel");
+  assert.ok(p.impedimentos.join(" ").includes("já começou"));
+});
+
+test("uma cedível e uma sem regra no mesmo horário: vira PEDIR", () => {
+  // O caminho mais restritivo ganha — puxar as duas passaria por cima de uma
+  // reserva cuja regra não autoriza.
+  const p = plano({
+    bookings: [DEST(), OCUPA("aCed"), OCUPA("aMeio", { id: "occ2", start: "09:30", end: "10:30" })],
+  });
+  assert.equal(p.modo, "pedir");
+  assert.equal(p.saidas.length, 2);
+});
+
+test("férias bloqueiam antes de qualquer regra de atividade", () => {
+  const cal = [{ id: "c1", kind: "ferias", scope: "colaborador", targetIds: ["col1"], dateStart: "2026-08-25", dateEnd: "2026-09-05", allDay: true }];
+  const p = plano({ calendar: cal });
+  assert.equal(p.modo, "impossivel");
+});
+
+test("horário que não encosta no destino não impede nada", () => {
+  const p = plano({ bookings: [DEST(), OCUPA("aMestre", { start: "14:00", end: "15:00" })] });
+  assert.equal(p.modo, "livre", "atividade mestre em outro horário não é problema deste horário");
+});
+
+test("quem já está na reserva não é puxado de novo", () => {
+  const p = plano({ collaboratorId: "colX" });
+  assert.equal(p.modo, "impossivel");
+});
+
+test("o pedido guarda de onde a pessoa sairia", () => {
+  const p = plano({ bookings: [DEST(), OCUPA("aMeio")] });
+  const req = E.staffRequestBlank({ collaboratorId: "col1", destino: DEST(), plano: p, actorName: "Ana", motivo: "falta 1" });
+  assert.equal(req.status, "pendente");
+  assert.equal(req.bookingId, "dest");
+  assert.deepEqual(req.origemStudyIds, ["s2"]);
+  assert.equal(req.requestedBy, "Ana");
+});
+
+test("pedido pendente que perdeu o sentido é apontado", () => {
+  const req = { id: "r1", status: "pendente", bookingId: "dest", collaboratorId: "col1", date: "2026-09-01" };
+  assert.equal(E.staleStaffRequests([req], [], "2026-08-20")[0].motivo, "a reserva de destino não existe mais");
+  assert.equal(E.staleStaffRequests([req], [DEST({ collaboratorIds: ["col1"] })], "2026-08-20")[0].motivo, "a pessoa já está escalada");
+  assert.equal(E.staleStaffRequests([req], [DEST()], "2026-10-01")[0].motivo, "a data já passou");
+  assert.deepEqual(E.staleStaffRequests([req], [DEST()], "2026-08-20"), []);
+});
+
+test("pedido já respondido não é reavaliado", () => {
+  const req = { id: "r1", status: "aceito", bookingId: "sumiu", collaboratorId: "col1" };
+  assert.deepEqual(E.staleStaffRequests([req], [], "2026-08-20"), []);
+});
+
+test("o aviso do pedido chega nos dois lados", () => {
+  const reqs = [
+    { id: "r1", status: "pendente", collaboratorId: "col1", studyId: "s1", requestedBy: "Ana", date: "2026-09-01", start: "09:00", end: "10:00" },
+    { id: "r2", status: "recusado", collaboratorId: "col1", studyId: "s1", requestedBy: "Bruno", resposta: "preciso dela" },
+  ];
+  const base = { staffRequests: reqs, studies: ESTUDOS_NEG, collaborators: [{ id: "col1", name: "Camila" }] };
+  // Quem NÃO pediu e pode planejar precisa responder.
+  const paraBruno = E.pendingActionsFor({ ...base, actorName: "Bruno", can: (c) => c === "planejar_estudo" });
+  assert.ok(paraBruno.some((a) => a.id === "equipe-responder:r1" && a.acao === true));
+  // Quem pediu recebe o resultado — como recado, não como tarefa.
+  const resultado = paraBruno.find((a) => a.id.startsWith("equipe-resultado:r2"));
+  assert.ok(resultado && resultado.acao === false);
+  assert.ok(resultado.body.includes("Camila"));
+  // Quem pediu não recebe o próprio pedido de volta como tarefa.
+  const paraAna = E.pendingActionsFor({ ...base, actorName: "Ana", can: (c) => c === "planejar_estudo" });
+  assert.ok(!paraAna.some((a) => a.id === "equipe-responder:r1"));
+});
+
+/* ---------------------------------------------------------------------- */
+/* O que o sistema deduz: D0, situação e técnico                            */
+/* ---------------------------------------------------------------------- */
+const TP_D = (over = {}) => ({ id: "tp0", studyId: "s1", label: "D0", offsetDays: 0, toleranceDays: 0, ...over });
+const EST_D = (over = {}) => ({ id: "s1", name: "P", startMin: "2026-09-01", ...over });
+
+test("sem visita marcada, o D0 é previsão contada do período combinado", () => {
+  const r = E.studyBaseline(EST_D(), [TP_D(), TP_D({ id: "tp1", offsetDays: 7 })], []);
+  assert.equal(r.date, "2026-09-01");
+  assert.equal(r.real, false);
+});
+
+test("marcada a primeira visita, o D0 vira a data de verdade", () => {
+  const b = { id: "b1", studyId: "s1", timepointId: "tp0", date: "2026-09-04", status: "confirmado" };
+  const r = E.studyBaseline(EST_D(), [TP_D(), TP_D({ id: "tp1", offsetDays: 7 })], [b]);
+  assert.equal(r.date, "2026-09-04");
+  assert.equal(r.real, true);
+});
+
+test("o D0 é a visita de menor deslocamento, não a primeira da lista", () => {
+  const tps = [TP_D({ id: "tpA", offsetDays: 14 }), TP_D({ id: "tpB", offsetDays: 0 })];
+  assert.equal(E.baselineTimepoint("s1", tps).id, "tpB");
+});
+
+test("base antiga com baselineDate gravado continua valendo", () => {
+  const r = E.studyBaseline(EST_D({ baselineDate: "2026-07-15" }), [TP_D()], []);
+  assert.equal(r.date, "2026-07-15");
+  assert.equal(r.real, false, "gravado não é o mesmo que marcado");
+});
+
+test("a situação sai da agenda, não de um campo", () => {
+  const tps = [TP_D()];
+  const marcada = { id: "b1", studyId: "s1", timepointId: "tp0", date: "2026-09-04", status: "confirmado" };
+  assert.equal(E.studyStatusAuto(EST_D(), tps, []), "planejamento", "protocolo sem nada marcado");
+  assert.equal(E.studyStatusAuto(EST_D(), [], []), "planejamento", "sem visitas no protocolo");
+  assert.equal(E.studyStatusAuto(EST_D(), tps, [marcada]), "ativo");
+  assert.equal(E.studyStatusAuto(EST_D(), tps, [{ ...marcada, completedAt: "2026-09-04T10:00:00Z" }]), "concluido");
+});
+
+test("visita ainda sem reserva impede o estudo de ficar concluído", () => {
+  const tps = [TP_D(), TP_D({ id: "tp1", offsetDays: 7 })];
+  const feita = { id: "b1", studyId: "s1", timepointId: "tp0", date: "2026-09-04", status: "confirmado", completedAt: "2026-09-04T10:00:00Z" };
+  assert.equal(E.studyStatusAuto(EST_D(), tps, [feita]), "ativo");
+});
+
+test("cancelar continua sendo decisão de gente", () => {
+  const marcada = { id: "b1", studyId: "s1", timepointId: "tp0", date: "2026-09-04", status: "confirmado" };
+  assert.equal(E.studyStatusAuto(EST_D({ status: "cancelado" }), [TP_D()], [marcada]), "cancelado");
+});
+
+test("estimativa sem bloqueio não faz o estudo parecer ativo", () => {
+  // `bookingOccupies` é falso pra estimativa solta: previsão não é agenda.
+  const previsao = { id: "b1", studyId: "s1", timepointId: "tp0", date: "2026-09-04", bookingType: "estimate", holdsResources: false };
+  assert.equal(E.studyStatusAuto(EST_D(), [TP_D()], [previsao]), "planejamento");
+});
+
+test("o técnico do estudo é a lista de quem ficou com cada atividade mestre", () => {
+  const b = { id: "b1", studyId: "s1", activityId: "am", date: "2026-09-04", collaboratorIds: ["col5"] };
+  const r = E.studyTechnicians(EST_D(), [b], ATIVIDADES);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].collaboratorId, "col5");
+  assert.equal(r[0].activity.id, "am");
+});
+
+/* ---------------------------------------------------------------------- */
+/* O que dá pra encaixar agora                                              */
+/* ---------------------------------------------------------------------- */
+const HORARIO = { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true, start: "08:00", end: "18:00" };
+const DADOS_E = () => ({
+  activities: [
+    { id: "aM", name: "Corneometria", minLevel: 3, durationMin: 60, mestre: true, locationIds: ["L1"] },
+    { id: "aC", name: "Apoio", minLevel: 1, durationMin: 60, cedivel: true },
+    { id: "aN", name: "Coleta", minLevel: 2, durationMin: 60 },
+  ],
+  locations: [
+    { id: "L1", name: "Sala A", active: true, availability: HORARIO, capacity: 6 },
+    { id: "L2", name: "Sala B", active: true, availability: HORARIO },
+  ],
+  collaborators: [
+    { id: "c1", name: "Ana", active: true, availability: HORARIO, levels: { aM: 4, aC: 3, aN: 3 } },
+    { id: "c2", name: "Bia", active: true, availability: HORARIO, levels: { aM: 1, aC: 3, aN: 3 } },
+    { id: "c3", name: "Caio", active: true, availability: HORARIO, levels: { aM: 4, aC: 3, aN: 3 } },
+  ],
+  equipment: [{ id: "e1", name: "MPA 5", active: true }],
+  doctors: [{ id: "d1", name: "Dr. X", active: true, availability: HORARIO }],
+  calendar: [],
+});
+const PEDE = (over = {}) => ({
+  activity: DADOS_E().activities[0], date: "2026-09-01", start: "09:00",
+  data: DADOS_E(), bookings: [], studies: [], ...over,
+});
+const acha = (lista, id) => lista.find((x) => x.item.id === id);
+
+test("com a agenda vazia, tudo aparece livre", () => {
+  const r = E.encaixeOpcoes(PEDE());
+  assert.equal(acha(r.salas, "L1").situacao, "livre");
+  assert.equal(acha(r.pessoas, "c1").situacao, "livre");
+  assert.equal(acha(r.equipamentos, "e1").situacao, "livre");
+});
+
+test("sala que não atende o método aparece, marcada como não servindo", () => {
+  const r = E.encaixeOpcoes(PEDE());
+  // Some da escolha, mas não some da tela: sumir sem dizer por quê é o que faz
+  // a pessoa procurar defeito onde tem regra.
+  assert.equal(acha(r.salas, "L2").situacao, "fora");
+  assert.match(acha(r.salas, "L2").detalhe, /não atende/);
+});
+
+test("quem não tem nível continua na lista, com o que falta", () => {
+  const r = E.encaixeOpcoes(PEDE());
+  const bia = acha(r.pessoas, "c2");
+  assert.equal(bia.situacao, "fora");
+  assert.equal(bia.faltaNivel, 2, "é daqui que sai o pedido de treinamento");
+});
+
+test("ocupado em atividade cedível é puxável; sem regra, é pedido", () => {
+  const dados = DADOS_E();
+  const reservas = [
+    { id: "b1", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aC", studyId: "sX", locationId: "L2", collaboratorIds: ["c1"] },
+    { id: "b2", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aN", studyId: "sX", locationId: "L2", collaboratorIds: ["c3"] },
+  ];
+  const r = E.encaixeOpcoes(PEDE({ data: dados, bookings: reservas, studies: [{ id: "sX", name: "SOLAR" }] }));
+  assert.equal(acha(r.pessoas, "c1").situacao, "cedivel");
+  assert.equal(acha(r.pessoas, "c3").situacao, "pedir");
+  assert.match(acha(r.pessoas, "c3").detalhe, /SOLAR/, "diz de qual estudo, pra saber com quem falar");
+});
+
+test("quem está em atividade mestre não sai", () => {
+  const reservas = [{ id: "b1", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aM", studyId: "sX", locationId: "L1", collaboratorIds: ["c3"] }];
+  const r = E.encaixeOpcoes(PEDE({ bookings: reservas }));
+  assert.equal(acha(r.pessoas, "c3").situacao, "travado");
+});
+
+test("sala ocupada diz quem está nela", () => {
+  const reservas = [{ id: "b1", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aN", studyId: "sX", locationId: "L1", collaboratorIds: [] }];
+  const r = E.encaixeOpcoes(PEDE({ bookings: reservas, studies: [{ id: "sX", name: "SOLAR" }] }));
+  const sala = acha(r.salas, "L1");
+  assert.equal(sala.situacao, "pedir");
+  assert.match(sala.detalhe, /Coleta · SOLAR/);
+});
+
+test("preparo e desmontagem contam na hora de ver se está livre", () => {
+  const dados = DADOS_E();
+  dados.activities[0].setupMin = 30;
+  // A reserva vizinha acaba 08:45; a execução começaria 09:00, mas o preparo
+  // começa 08:30 e encosta nela.
+  const reservas = [{ id: "b1", date: "2026-09-01", start: "08:00", end: "08:45", activityId: "aN", studyId: "sX", locationId: "L1", collaboratorIds: [] }];
+  const r = E.encaixeOpcoes(PEDE({ activity: dados.activities[0], data: dados, bookings: reservas }));
+  assert.equal(acha(r.salas, "L1").situacao, "pedir", "sem contar o preparo, isto passaria batido");
+});
+
+test("sala pequena demais pro grupo não serve", () => {
+  const r = E.encaixeOpcoes(PEDE({ participants: 10 }));
+  assert.equal(acha(r.salas, "L1").situacao, "fora");
+  assert.match(acha(r.salas, "L1").detalhe, /comporta 6/);
+});
+
+test("equipamento com calibração vencida sai da escolha", () => {
+  const dados = DADOS_E();
+  dados.equipment[0].lastCalibration = "2020-01-01";
+  dados.equipment[0].calibrationIntervalDays = 365;
+  const r = E.encaixeOpcoes(PEDE({ data: dados }));
+  assert.equal(acha(r.equipamentos, "e1").situacao, "fora");
+  assert.match(acha(r.equipamentos, "e1").detalhe, /calibração vencida/);
+});
+
+test("a lista vem na ordem de quem resolve primeiro", () => {
+  const reservas = [{ id: "b1", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aC", studyId: "sX", locationId: "L2", collaboratorIds: ["c1"] }];
+  const r = E.encaixeOpcoes(PEDE({ bookings: reservas }));
+  const ordem = r.pessoas.map((p) => p.situacao);
+  assert.equal(ordem[0], "livre", "primeiro quem já dá pra escolher");
+  assert.ok(ordem.indexOf("cedivel") < ordem.indexOf("fora"));
+});
+
+test("atividades na mesma sala e horário viram um bloco só", () => {
+  const reservas = [
+    { id: "b1", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aC", locationId: "L1", studyId: "sX" },
+    { id: "b2", date: "2026-09-01", start: "09:30", end: "10:30", activityId: "aN", locationId: "L1", studyId: "sX" },
+    { id: "b3", date: "2026-09-01", start: "14:00", end: "15:00", activityId: "aN", locationId: "L1", studyId: "sX" },
+    { id: "b4", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aN", locationId: "L2", studyId: "sY" },
+  ];
+  const blocos = E.blocosDeSala(reservas, DADOS_E().activities);
+  assert.equal(blocos.length, 3, "duas encostadas na Sala A viram uma; a da tarde é outra; a Sala B é outra");
+  const junto = blocos.find((b) => b.bookings.length === 2);
+  assert.equal(junto.start, "09:00");
+  assert.equal(junto.end, "10:30", "o bloco vai do começo do primeiro ao fim do último");
+});
+
+test("o bloco guarda de quais estudos ele é", () => {
+  const reservas = [
+    { id: "b1", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aC", locationId: "L1", studyId: "sX" },
+    { id: "b2", date: "2026-09-01", start: "09:00", end: "10:00", activityId: "aN", locationId: "L1", studyId: "sY" },
+  ];
+  const blocos = E.blocosDeSala(reservas, DADOS_E().activities);
+  assert.deepEqual(blocos[0].estudos.sort(), ["sX", "sY"], "sala dividida entre dois estudos é exatamente o que precisa saltar aos olhos");
+});
+
+test("o combinado padrão preenche só o que ninguém decidiu", () => {
+  const ativs = [
+    { id: "a1", name: "Apoio" },                                  // sem campo: decide
+    { id: "a2", name: "Avaliação De Eritema" },                   // sem campo: decide
+    { id: "a3", name: "Lavagem" },                                // sem campo: nem um nem outro
+    { id: "a4", name: "Apoio", mestre: true, cedivel: false },    // já decidida: não mexe
+    { id: "a5", name: "Fluxo", mestre: false, cedivel: false },   // decidida como "nenhum": respeita
+  ];
+  const { next, mudadas } = E.aplicarSugestaoDeRegras(ativs);
+  assert.equal(mudadas, 3);
+  assert.equal(next[0].cedivel, true);
+  assert.equal(next[1].mestre, true);
+  assert.equal(next[2].mestre, false);
+  assert.equal(next[2].cedivel, false);
+  assert.equal(next[3].mestre, true, "escolha manual não é desfeita");
+  assert.equal(next[4].cedivel, false, "\"nenhum dos dois\" é decisão, não ausência");
+});
+
+test("rodar duas vezes não muda nada na segunda", () => {
+  const um = E.aplicarSugestaoDeRegras([{ id: "a1", name: "Apoio" }]);
+  const dois = E.aplicarSugestaoDeRegras(um.next);
+  assert.equal(dois.mudadas, 0);
+});
+
+/* ---------------------------------------------------------------------- */
+/* Gravação do estudo: uma função só para as duas telas                     */
+console.log("\nGravação do estudo");
+
+test("estudo novo entra na lista; a lista continua sendo lista", () => {
+  // A tela nova chamava a gravação com um estudo solto e o app virava tela
+  // branca no render seguinte. O contrato agora é: entram listas, saem listas.
+  const r = E.studySavePayload({
+    study: { id: "sX", name: "Novo", baselineDate: "2026-09-01" },
+    tpRows: [{ id: "t1", label: "D0", offsetDays: 0, toleranceDays: 0 }],
+    studies: [{ id: "s0", name: "Antigo" }], timepoints: [], bookings: [],
+  });
+  assert.ok(Array.isArray(r.nextStudies) && Array.isArray(r.nextTimepoints));
+  assert.deepEqual(r.nextStudies.map((s) => s.id), ["s0", "sX"]);
+  assert.equal(r.nextTimepoints[0].studyId, "sX");
+  assert.equal(r.nextTimepoints[0].dateMin, "2026-09-01");
+});
+
+test("estudo existente é atualizado no lugar, não duplicado", () => {
+  const r = E.studySavePayload({
+    study: { id: "s0", name: "Renomeado", baselineDate: "2026-09-01" },
+    tpRows: [], studies: [{ id: "s0", name: "Antigo", status: "ativo" }], timepoints: [], bookings: [],
+  });
+  assert.equal(r.nextStudies.length, 1);
+  assert.equal(r.nextStudies[0].name, "Renomeado");
+  assert.equal(r.nextStudies[0].status, "ativo", "campo que o formulário não manda é preservado");
+});
+
+test("visita removida some — a não ser que tenha reserva presa nela", () => {
+  const tps = [
+    { id: "t1", studyId: "s0", label: "D0" },
+    { id: "t2", studyId: "s0", label: "T1" },
+    { id: "t9", studyId: "outro", label: "de outro estudo" },
+  ];
+  const r = E.studySavePayload({
+    study: { id: "s0", name: "X", baselineDate: "2026-09-01" },
+    tpRows: [], studies: [{ id: "s0" }], timepoints: tps,
+    bookings: [{ id: "b1", studyId: "s0", timepointId: "t2" }],
+  });
+  const ids = r.nextTimepoints.map((t) => t.id);
+  assert.ok(!ids.includes("t1"), "sem reserva, some");
+  assert.ok(ids.includes("t2"), "com reserva, fica — senão a reserva ficaria órfã");
+  assert.ok(ids.includes("t9"), "visita de outro estudo não é tocada");
+});
+
+/* ---------------------------------------------------------------------- */
 console.log(`\n${passed} passaram, ${failed} falharam\n`);
 process.exit(failed ? 1 : 0);
