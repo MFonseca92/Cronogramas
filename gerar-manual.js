@@ -99,7 +99,7 @@ const doc = new Document({
       new Paragraph({ spacing: { after: 55 }, children: [new TextRun({ text: "CENTRAL DE RECURSOS", bold: true, size: 20, color: TEAL, font: "Calibri", characterSpacing: 40 })] }),
       new Paragraph({ spacing: { after: 110 }, children: [new TextRun({ text: "Manual de uso", bold: true, size: 44, color: TINTA, font: "Calibri" })] }),
       new Paragraph({ spacing: { after: 220 }, border: { bottom: { style: BorderStyle.SINGLE, size: 12, color: TEAL } },
-        children: [new TextRun({ text: "O que o programa faz, como se usa, e o que ele ainda não faz — versão 3.4", size: 24, color: CINZA, font: "Calibri", italics: true })] }),
+        children: [new TextRun({ text: "O que o programa faz, como se usa, e o que ele ainda não faz — versão 3.5", size: 24, color: CINZA, font: "Calibri", italics: true })] }),
 
       p([forte("Para que serve. "), normal("Agendar salas, equipe, médicos e equipamentos dos estudos do setor, respeitando o protocolo de cada um: quantos dias depois do D0 cada visita acontece, qual a tolerância, quem está habilitado para cada método, qual aparelho está calibrado e quem está de férias.")]),
       p([normal("Ele substitui a planilha compartilhada em três coisas que planilha não faz: "), forte("impede"), normal(" dois estudos de marcarem a mesma sala no mesmo horário, "), forte("sugere"), normal(" o encaixe em vez de exigir que alguém procure, e "), forte("avisa"), normal(" quando um prazo de protocolo está para vencer sem ninguém ter marcado.")], { after: 220 }),
@@ -121,7 +121,7 @@ const doc = new Document({
       /* ---------------- o caminho ---------------- */
       titulo("2. O caminho de sempre"),
       p("Tudo que diz respeito a um estudo está na tela Estudos: cadastrar, planejar e acompanhar."),
-      passo([forte("Estudos → Novo estudo. "), normal("O cadastro pergunta pouco de propósito: código/nome do protocolo, patrocinador, o modelo de protocolo (que já preenche as visitas no formato mais usado), o período combinado com o cliente e os grupos de participantes. Só isso.")]),
+      passo([forte("Estudos → Novo estudo. "), normal("A primeira escolha é o peso: "), forte("reserva"), normal(" (vale desde já e ocupa a agenda) ou "), forte("estimativa"), normal(" (previsão de orçamento). Depois, o cadastro pergunta pouco de propósito: código/nome do protocolo, patrocinador, o modelo de protocolo (que já preenche as visitas no formato mais usado), o período combinado com o cliente e os grupos de participantes. Só isso.")]),
       passo([forte("Clique na visita, na coluna da esquerda. "), normal("A bolha diz a situação sem precisar abrir: verde completa, âmbar falta alguém, cinza nem começou.")]),
       passo([forte("Acrescente uma atividade. "), normal("Escolha o método e a hora. A reserva nasce na hora, com a sala já escolhida pelo sistema e sem equipe — e fica marcada como incompleta, que é o que ela é.")]),
       passo([forte("Preencha pela coluna da direita. "), normal("Ela mostra, para a atividade selecionada, quem está livre, que salas atendem o método e que aparelhos estão calibrados. Um clique escala. “Preencher o que falta” faz isso de uma vez em toda a visita.")]),
@@ -133,6 +133,15 @@ const doc = new Document({
       ], TEAL, VERDE_F),
       p([normal("A coluna da direita mostra "), forte("quem está livre naquele dia"), normal(" e, para quem não está, em que atividade e de qual estudo.")]),
       new Paragraph({ spacing: { after: 200 }, children: [] }),
+
+      sub("Reserva ou estimativa — a mesma ficha, com peso diferente"),
+      p([normal("Estimativa deixou de ser uma tela à parte. Uma estimativa "), forte("é"), normal(" um estudo: mesmo protocolo, mesmo patrocinador, mesmas visitas. O que muda é uma coisa só — se ela já vale ou se está só segurando lugar.")]),
+      tabela(["Escolha", "O que acontece na agenda"], [
+        ["Reserva", "Ocupa de verdade. É o comportamento normal do sistema."],
+        ["Estimativa, sem segurar", "Aparece como previsão, entra em custo e capacidade previstos, mas NÃO tira o horário de ninguém — outro estudo pode marcar por cima."],
+        ["Estimativa, segurando até uma data", "Tira o horário enquanto o prazo valer. Vencido o prazo, o horário volta sozinho para o pool, sem ninguém precisar lembrar de liberar."],
+      ], [2600, 6760]),
+      p([forte("Virou reserva. "), normal("Quando o cliente aprova, o botão no cabeçalho do estudo troca o peso e reescreve as reservas futuras na mesma gravação. O que já aconteceu fica como estava: o passado aconteceu com o peso que tinha.")], { after: 200 }),
 
       sub("Quando falta gente, sala ou aparelho"),
       p([normal("A coluna da direita tem três listas — "), forte("Equipe"), normal(", "), forte("Salas"), normal(" e "), forte("Equipamentos"), normal(" — e todas são da atividade selecionada, nunca do dia em geral: a mesma sala atende um método e não atende outro, e o nível exigido muda quem pode entrar.")]),
@@ -179,17 +188,16 @@ const doc = new Document({
       /* ---------------- telas ---------------- */
       titulo("4. As telas"),
       tabela(["Tela", "Para que serve"], [
-        ["Painel", "Onde você aterrissa. Mostra o dia, os alertas e o que exige ação."],
-        ["Estudos", "Cadastrar, montar a visita atividade por atividade, acompanhar e negociar equipe. É o centro do sistema."],
+        ["Painel", "Só pendência: o que espera a sua resposta, o que já está errado e o que vira problema se ninguém olhar. Ocupação não fica aqui — fica no Cronograma."],
+        ["Estudos", "Cadastrar (reserva ou estimativa), montar a visita atividade por atividade, acompanhar e negociar equipe. É o centro do sistema."],
         ["Cronograma", "O dia em três vistas: agenda em grade, por sala (cada quadro é uma sala com tudo que acontece dentro) e planta baixa. No alto, o dia em números; abaixo, filtros por estudo, patrocinador, atividade, sala, equipamento, pessoa e situação."],
-        ["Estimativas", "Orçamento antes de virar estudo. Dá para segurar recursos por um prazo e converter depois."],
-        ["Calendário", "Férias, folgas, feriados, eventos e manutenção do ano."],
+        ["Calendário", "Férias, folgas, feriados e manutenção do ano. Clicar num dia abre o dia: quem falta e tudo que está marcado, sala por sala."],
         ["Treinamentos", "Pedidos de treinamento e agendamento das aulas. Concluir a aula sobe o nível da pessoa."],
         ["Horas Extras", "Pedido, resposta da pessoa e aprovação da gestão."],
         ["Meu dia", "A agenda pessoal de quem está logado, com iniciar e finalizar."],
-        ["Indicadores", "Custo, ocupação, perdas por cancelamento e conversão de estimativas."],
-        ["Configurações", "Cadastro, calibração, estoque, custos, horários, usuários e permissões."],
-        ["Histórico", "Quem mexeu em quê e quando."],
+        ["Indicadores", "Custo e conversão, mais o que dá para mudar amanhã: ocupação por sala, carga por pessoa, onde a escala trava e aderência ao protocolo."],
+        ["Configurações", "Cadastro, calibração, estoque, custos, horários, usuários e permissões — com um diagnóstico do que ainda falta configurar."],
+        ["Histórico", "Cada alteração: o que mudou, em qual registro, de que valor para qual, quem fez, quando e — quando existe — por quê."],
       ], [2200, 7160]),
       new Paragraph({ spacing: { after: 200 }, children: [] }),
 
@@ -227,15 +235,15 @@ const doc = new Document({
       p("O menu de cada pessoa sai da matriz de permissões, editável pelo Admin em Configurações → Permissões. Quem pode aprovar prazo é quem recebe o aviso de prazo — a mesma configuração governa as duas coisas."),
       tabela(["Conta", "O que enxerga"], [
         ["Administrador", "Tudo, inclusive Usuários e Permissões"],
-        ["Gestor", "Indicadores, Estimativas, Configurações, Cadastro e aprovações"],
-        ["Agendador", "Estudos, Estimativas e Cronograma"],
+        ["Gestor", "Indicadores, Configurações, Cadastro e aprovações"],
+        ["Agendador", "Estudos e Cronograma"],
         ["Equipe de Treinamento", "Treinamentos e o dia a dia"],
         ["Colaborador ou médico, pelo nome", "Meu dia e o dia a dia"],
       ], [3000, 6360]),
       p([new TextRun({ text: "O PIN de todas as contas de teste é 1234. Em uso real, troque em Configurações → Usuários — lembrando do limite descrito no item 5.", size: 20, color: CINZA, font: "Calibri", italics: true })], { after: 120 }),
 
       regua(),
-      p([new TextRun({ text: "Versão 3.4 · a versão aparece na tela de login e na barra lateral. Se o que você está vendo não bate com este manual, confira ali primeiro: quase sempre é uma cópia antiga do arquivo.", size: 20, color: CINZA, font: "Calibri", italics: true })]),
+      p([new TextRun({ text: "Versão 3.5 · a versão aparece na tela de login e na barra lateral. Se o que você está vendo não bate com este manual, confira ali primeiro: quase sempre é uma cópia antiga do arquivo.", size: 20, color: CINZA, font: "Calibri", italics: true })]),
     ],
   }],
 });

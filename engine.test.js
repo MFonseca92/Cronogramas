@@ -2860,6 +2860,233 @@ test("o técnico do estudo é a lista de quem ficou com cada atividade mestre", 
 });
 
 /* ---------------------------------------------------------------------- */
+/* Indicadores de operação                                                  */
+/* ---------------------------------------------------------------------- */
+const OP_HOR = { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true, start: "08:00", end: "12:00" };
+const OP_DADOS = () => ({
+  locations: [
+    { id: "L1", name: "Sala A", active: true, availability: OP_HOR },
+    { id: "L2", name: "Sala B", active: true, availability: OP_HOR },
+  ],
+  activities: [
+    { id: "a1", name: "Corneometria", minLevel: 3, staffCount: 1, durationMin: 60, locationIds: ["L1"] },
+    { id: "a2", name: "Apoio", minLevel: 1, staffCount: 2, durationMin: 60 },
+  ],
+  collaborators: [
+    { id: "c1", name: "Ana", active: true, levels: { a1: 4, a2: 3 } },
+    { id: "c2", name: "Bia", active: true, levels: { a1: 1, a2: 3 } },
+  ],
+});
+const OP_RES = (over = {}) => ({
+  id: "b1", date: "2026-09-01", start: "08:00", end: "10:00",
+  activityId: "a1", locationId: "L1", collaboratorIds: ["c1"], ...over,
+});
+
+test("ocupação da sala é medida contra o tempo em que ela abre", () => {
+  // A sala abre 4h; 2h marcadas = 50%. Contra o dia inteiro daria 8%.
+  const r = E.ocupacaoPorSala([OP_RES()], OP_DADOS(), ["2026-09-01"]);
+  const salaA = r.find((x) => x.item.id === "L1");
+  assert.equal(salaA.pct, 50);
+  assert.equal(r.find((x) => x.item.id === "L2").pct, 0);
+});
+
+test("duas atividades juntas na mesma sala ocupam a sala uma vez", () => {
+  const juntas = [
+    OP_RES({ id: "b1", groupId: "g1" }),
+    OP_RES({ id: "b2", groupId: "g1", activityId: "a2" }),
+  ];
+  const r = E.ocupacaoPorSala(juntas, OP_DADOS(), ["2026-09-01"]);
+  assert.equal(r.find((x) => x.item.id === "L1").pct, 50, "somar daria 100% de uma sala que ficou meio período livre");
+});
+
+test("carga por pessoa aponta quem está concentrado e quem está parado", () => {
+  const reservas = [
+    OP_RES({ id: "b1", collaboratorIds: ["c1"] }),
+    OP_RES({ id: "b2", start: "10:00", end: "12:00", collaboratorIds: ["c1"] }),
+  ];
+  const r = E.cargaPorPessoa(reservas, OP_DADOS());
+  assert.equal(r.linhas[0].item.id, "c1");
+  assert.equal(r.linhas[0].horas, 4);
+  assert.deepEqual(r.ociosos, ["Bia"]);
+  assert.deepEqual(r.sobrecarregados, ["Ana"]);
+});
+
+test("gargalo aparece onde falta gente OU onde há pouca folga", () => {
+  const dados = OP_DADOS();
+  // Apoio exige 2 pessoas e a reserva tem 1: fica sem equipe.
+  const reservas = [OP_RES({ id: "b2", activityId: "a2", collaboratorIds: ["c1"] })];
+  const r = E.gargaloPorAtividade(reservas, dados);
+  const apoio = r.find((x) => x.item.id === "a2");
+  assert.equal(apoio.semEquipe, 1);
+  assert.equal(apoio.aperta, true);
+  assert.equal(apoio.habilitados, 2, "quem tem nível pra fazer");
+});
+
+test("atividade nunca marcada não entra no gargalo", () => {
+  const r = E.gargaloPorAtividade([], OP_DADOS());
+  assert.deepEqual(r, [], "o que ninguém pediu não é gargalo de ninguém");
+});
+
+test("aderência ao protocolo mede a visita contra a janela dela", () => {
+  const tps = [
+    { id: "tp0", studyId: "s1", label: "D0", offsetDays: 0, toleranceDays: 0 },
+    { id: "tp1", studyId: "s1", label: "D7", offsetDays: 7, toleranceDays: 2 },
+  ];
+  const studies = [{ id: "s1", name: "P", startMin: "2026-09-01" }];
+  const dentro = [
+    { id: "b0", studyId: "s1", timepointId: "tp0", date: "2026-09-01" },
+    { id: "b1", studyId: "s1", timepointId: "tp1", date: "2026-09-09" },
+  ];
+  assert.equal(E.aderenciaAoProtocolo(dentro, tps, studies).fora, 0, "D7±2 aceita o dia 9");
+
+  const fora = [
+    { id: "b0", studyId: "s1", timepointId: "tp0", date: "2026-09-01" },
+    { id: "b1", studyId: "s1", timepointId: "tp1", date: "2026-09-15" },
+  ];
+  const r = E.aderenciaAoProtocolo(fora, tps, studies);
+  assert.equal(r.fora, 1);
+  assert.equal(r.pct, 50);
+});
+
+test("motivo de cancelamento repetido é problema de processo", () => {
+  const r = E.motivosDeCancelamento([
+    { id: "1", reason: "voluntária faltou", cost: 100 },
+    { id: "2", reason: "voluntária faltou", cost: 50 },
+    { id: "3", reason: "sala em obra", cost: 10 },
+  ]);
+  assert.equal(r[0].motivo, "voluntária faltou");
+  assert.equal(r[0].vezes, 2);
+  assert.equal(r[0].custo, 150);
+});
+
+/* ---------------------------------------------------------------------- */
+/* Histórico: o quê, quem, quando e por quê                                 */
+/* ---------------------------------------------------------------------- */
+test("o histórico guarda QUAL registro e QUAIS campos mudaram", () => {
+  const antes = [{ id: "b1", name: "Reserva A", start: "09:00", locationId: "L1" }];
+  const depois = [{ id: "b1", name: "Reserva A", start: "10:00", locationId: "L2" }];
+  const e = E.montarAuditoria({ entity: "bookings", prev: antes, next: depois, actor: "Ana", ts: "2026-09-01T12:00:00Z" });
+  assert.equal(e.action, "atualizado");
+  assert.equal(e.itens.length, 1);
+  const campos = e.itens[0].campos.map((c) => c.campo).sort();
+  assert.deepEqual(campos, ["locationId", "start"]);
+  const start = e.itens[0].campos.find((c) => c.campo === "start");
+  assert.equal(start.de, "09:00");
+  assert.equal(start.para, "10:00");
+});
+
+test("criar e excluir são reconhecidos sem precisar contar a lista", () => {
+  const criou = E.montarAuditoria({ entity: "locations", prev: [], next: [{ id: "L1", name: "Sala" }], actor: "Ana" });
+  assert.equal(criou.action, "criado");
+  const excluiu = E.montarAuditoria({ entity: "locations", prev: [{ id: "L1", name: "Sala" }], next: [], actor: "Ana" });
+  assert.equal(excluiu.action, "excluído");
+});
+
+test("uma gravação que cria E exclui ao mesmo tempo é 'atualizado'", () => {
+  // Trocar um item por outro mexia o tamanho da lista em zero e a versão antiga
+  // chutava pelo tamanho — agora a comparação é por id.
+  const e = E.montarAuditoria({
+    entity: "bookings",
+    prev: [{ id: "b1", name: "A" }], next: [{ id: "b2", name: "B" }], actor: "Ana",
+  });
+  assert.equal(e.action, "atualizado");
+  assert.equal(e.total, 2, "um criado e um excluído");
+});
+
+test("quem chamou pode dar um nome melhor à ação, e um motivo", () => {
+  const e = E.montarAuditoria({
+    entity: "bookings", prev: [{ id: "b1", date: "2026-09-01" }], next: [{ id: "b1", date: "2026-09-08" }],
+    actor: "Ana", acao: "reagendado", motivo: "voluntária remarcou",
+  });
+  assert.equal(e.action, "reagendado");
+  assert.equal(e.motivo, "voluntária remarcou");
+});
+
+test("campos que mudam sozinhos não entram", () => {
+  const e = E.montarAuditoria({
+    entity: "x", actor: "Ana",
+    prev: [{ id: "1", name: "A", updatedAt: "ontem" }],
+    next: [{ id: "1", name: "A", updatedAt: "hoje" }],
+  });
+  assert.equal(e.itens.length, 0, "só o carimbo de tempo mudou — não é alteração de ninguém");
+});
+
+test("gravação enorme é cortada, e o corte é declarado", () => {
+  const muitos = (n, f) => Array.from({ length: n }, (_, i) => ({ id: `x${i}`, name: `Item ${i}`, v: f }));
+  const e = E.montarAuditoria({ entity: "x", prev: muitos(30, 1), next: muitos(30, 2), actor: "Ana" });
+  assert.equal(e.itens.length, E.AUDIT_MAX_ITENS);
+  assert.equal(e.total, 30);
+  assert.equal(e.itensOcultos, 30 - E.AUDIT_MAX_ITENS, "diz o que ficou de fora em vez de fingir que mostrou tudo");
+});
+
+test("valor vira frase legível — id vira nome, lista vira nomes, vazio vira travessão", () => {
+  const nomes = new Map([["L1", "Sala Verde"], ["c1", "Ana"], ["c2", "Bia"]]);
+  assert.equal(E.valorLegivel("locationId", "L1", nomes), "Sala Verde");
+  assert.equal(E.valorLegivel("collaboratorIds", ["c1", "c2"], nomes), "Ana, Bia");
+  assert.equal(E.valorLegivel("collaboratorIds", [], nomes), "—");
+  assert.equal(E.valorLegivel("start", null, nomes), "—");
+  assert.equal(E.valorLegivel("mestre", true, nomes), "sim");
+});
+
+test("reserva não tem nome — é chamada pelo estudo e pelo dia", () => {
+  assert.equal(E.rotuloDoRegistro({ id: "b1", studyName: "HIDRA-204", date: "2026-09-01" }), "HIDRA-204 · ter., 01/09");
+  assert.equal(E.rotuloDoRegistro({ id: "L1", name: "Sala Verde" }), "Sala Verde");
+});
+
+/* ---------------------------------------------------------------------- */
+/* Reserva ou estimativa: o mesmo estudo, com peso diferente                */
+/* ---------------------------------------------------------------------- */
+test("estudo sem tipo é reserva — base antiga não vira previsão sozinha", () => {
+  assert.equal(E.studyKind({ id: "s1" }), "reserva");
+  assert.equal(E.isEstimativa({ id: "s1" }), false);
+  assert.equal(E.bookingKindFromStudy({ id: "s1" }).bookingType, "reservation");
+});
+
+test("estimativa que não segura não tira o horário de ninguém", () => {
+  const est = { id: "s1", kind: "estimativa", holdsResources: false };
+  assert.equal(E.studyHoldsNow(est), false);
+  const marca = E.bookingKindFromStudy(est);
+  assert.equal(marca.bookingType, "estimate");
+  assert.equal(marca.holdsResources, false);
+  // É a mesma conta que a agenda usa pra decidir se bloqueia.
+  assert.equal(E.bookingOccupies({ ...marca }), false);
+});
+
+test("estimativa que segura bloqueia enquanto o prazo valer", () => {
+  const est = { id: "s1", kind: "estimativa", holdsResources: true, holdUntil: "2026-12-31" };
+  assert.equal(E.studyHoldsNow(est, "2026-09-01"), true);
+  assert.equal(E.studyHoldsNow(est, "2027-01-02"), false, "prazo vencido devolve o horário sozinho");
+  assert.equal(E.bookingOccupies(E.bookingKindFromStudy(est), "2026-09-01"), true);
+});
+
+test("virar reserva reescreve as reservas futuras, não o passado", () => {
+  const study = { id: "s1", kind: "estimativa", holdsResources: true, holdUntil: "2026-12-31" };
+  const bookings = [
+    { id: "b1", studyId: "s1", date: "2026-08-01", bookingType: "estimate", holdsResources: true },
+    { id: "b2", studyId: "s1", date: "2026-09-10", bookingType: "estimate", holdsResources: true },
+    { id: "b3", studyId: "sX", date: "2026-09-10", bookingType: "reservation" },
+  ];
+  const r = E.mudarPesoDoEstudo({ study, bookings, kind: "reserva", hoje: "2026-08-20" });
+  assert.equal(r.study.kind, "reserva");
+  assert.equal(r.study.holdsResources, false, "reserva não segura: ela É");
+  assert.equal(r.alteradas.length, 1);
+  assert.equal(r.intocadas.length, 1, "o que já passou aconteceu com o peso que tinha");
+  assert.equal(r.bookings.find((b) => b.id === "b2").bookingType, "reservation");
+  assert.equal(r.bookings.find((b) => b.id === "b1").bookingType, "estimate");
+  assert.equal(r.bookings.find((b) => b.id === "b3").bookingType, "reservation", "estudo vizinho não é tocado");
+});
+
+test("virar estimativa carrega o prazo pras reservas", () => {
+  const study = { id: "s1", kind: "reserva" };
+  const bookings = [{ id: "b1", studyId: "s1", date: "2026-09-10", bookingType: "reservation" }];
+  const r = E.mudarPesoDoEstudo({ study, bookings, kind: "estimativa", holdsResources: true, holdUntil: "2026-10-01", hoje: "2026-08-20" });
+  const b = r.bookings[0];
+  assert.equal(b.bookingType, "estimate");
+  assert.equal(b.holdsResources, true);
+  assert.equal(b.holdUntil, "2026-10-01");
+});
+
+/* ---------------------------------------------------------------------- */
 /* O que dá pra encaixar agora                                              */
 /* ---------------------------------------------------------------------- */
 const HORARIO = { mon: true, tue: true, wed: true, thu: true, fri: true, sat: true, sun: true, start: "08:00", end: "18:00" };

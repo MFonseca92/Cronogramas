@@ -47,6 +47,12 @@ const FN_NAMES = [
    * o extrator monta um motor que quebra na primeira validação. */
   "technicianProblems", "collaboratorLockReason", "lockedCollaboratorIds",
   "baselineTimepoint", "studyBaseline", "studyStatusAuto",
+  "studyHoldsNow", "bookingKindFromStudy", "mudarPesoDoEstudo",
+  "converterEstimativasAntigas",
+  "diffRegistros", "diffColecao", "rotuloDoRegistro", "montarAuditoria", "valorLegivel",
+  "diagnosticoDoCadastro", "dependenciasDoItem",
+  "ocupacaoPorSala", "cargaPorPessoa", "gargaloPorAtividade",
+  "aderenciaAoProtocolo", "motivosDeCancelamento",
   "studyMasterTechnician", "studyTechnicians",
   "technicianSwapPlan", "technicianCandidates",
   // Continuidade do operador — o `validateBooking` chama `equipmentOperatorProblems`.
@@ -79,6 +85,9 @@ const CONST_NAMES = [
   // Usadas dentro do `validateBooking` — mesma razão do bloco acima.
   "isMasterActivity", "isYieldableActivity",
   "STAFF_REQUEST_STATUS", "ENCAIXE_META", "SITUACAO_META",
+  "STUDY_KINDS", "STUDY_KIND_META", "studyKind", "isEstimativa",
+  "AUDIT_MAX_ITENS", "AUDIT_MAX_CAMPOS", "AUDIT_MAX_TEXTO",
+  "AUDIT_CAMPOS_MUDOS", "AUDIT_CAMPO_LABEL", "AUDIT_ACOES",
   "SUGESTAO_CEDIVEIS", "SUGESTAO_MESTRES",
 ];
 
